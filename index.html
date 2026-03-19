@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src=”https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js></script>
+<script src=https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
 :root {
@@ -482,6 +484,14 @@ select:focus{outline:none;border-color:var(--teal)}
 </div>
 
 <script>
+
+//====================
+//FIREBASE
+//====================
+const firebaseConfig = {apiKey: "AIzaSyBxEVBFLgPs_vkLya-zZ0bWunJoiLDGKI8",authDomain: "learner-tracker-b52e9.firebaseapp.com",projectId: "learner-tracker-b52e9",storageBucket: "learner-tracker-b52e9.firebasestorage.app",messagingSenderId: "113394990899",appId: "1:113394990899:web:26c769cce4605c95224846",measurementId: "G-T1X5ST3CE7"};
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
 const DIPLOMA_ACS = [
   {unit:1, ref:'1.1.1',n:1},{unit:1, ref:'1.1.4',n:1},{unit:1, ref:'1.1.5',n:1},
   {unit:1, ref:'1.1.7',n:1},{unit:1, ref:'1.1.8',n:1},{unit:1, ref:'1.1.9, 1.2.10',n:2},
