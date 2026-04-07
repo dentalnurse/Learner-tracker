@@ -7,13 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="shell">
+
 <nav class="sidebar">
   <div class="brand">
     <div class="brand-title">Progress<br>Tracker</div>
@@ -54,6 +56,7 @@
   </div>
   <div class="sidebar-foot">dentalnurse.training</div>
 </nav>
+
 <main class="main">
   <div id="tab-dashboard" class="view active"></div>
   <div id="tab-marking"   class="view"></div>
@@ -74,9 +77,9 @@
             <option value="ohe">OHE Certificate</option>
           </select>
         </div>
-        <div class="form-row"><label>Start date</label><input id="add-start" type="date" min="01-01-2000"></div>
-        <div class="form-row"><label>Planned end date</label><input id="add-end" type="date" max="31-12-3000"></div>
-        <div class="form-row full"><label>Exam date (if known)</label><input id="add-exam" type="date" min="01-01-2000" max="31-12-3000"></div>
+        <div class="form-row"><label>Start date</label><input id="add-start" type="date"></div>
+        <div class="form-row"><label>Planned end date</label><input id="add-end" type="date"></div>
+        <div class="form-row full"><label>Exam date (if known)</label><input id="add-exam" type="date"></div>
         <div class="form-row full">
           <label>Upload timetable (.docx)</label>
           <div class="file-upload-zone" id="add-tt-zone" onclick="document.getElementById('add-tt-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleTTDrop(event,'add')">
