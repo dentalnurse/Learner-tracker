@@ -396,3 +396,4 @@ function deleteLearner(i) {
 }
 
 window.onload = () => { initialFirebaseLoad(); };
+script.js
