@@ -364,26 +364,95 @@ function selectTT(i) { cTT = i; renderTimetable(); }
 
 function renderEdit() {
   const el = document.getElementById('tab-edit');
-  if (!DB.learners.length) { el.innerHTML = '<div class="empty">No learners to edit.</div>'; return; }
+  if (!DB.learners.length) { 
+    el.innerHTML = '<div class="empty">No learners to edit.</div>'; 
+    return; 
+  }
 
   const cards = DB.learners.map((l, i) => `
-    <div class="table-card" style="display:flex; align-items:center; justify-content:space-between; padding:16px; margin-bottom:12px;">
-      <div>
-        <div style="font-weight:700; color:var(--ink)">${l.name}</div>
-        <div style="font-size:12px; color:var(--ink3)">${l.cohort} • ${l.type.toUpperCase()}</div>
+    <div class="table-card" id="edit-card-${i}" style="padding:16px; margin-bottom:12px;">
+      <div id="view-mode-${i}" style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div style="font-weight:700; color:var(--ink); font-size:16px;">${l.name}</div>
+          <div style="font-size:12px; color:var(--ink3)">${l.cohort} • ${l.type.toUpperCase()}</div>
+        </div>
+        <div>
+          <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="margin-right:8px; background:#e2e8f0; color:#475569;">Edit</button>
+          <button class="btn-red" onclick="deleteLearner(${i})" style="background:var(--red-light); color:var(--red); border:none; padding:8px 12px; border-radius:6px; font-weight:600; cursor:pointer;">
+            Delete
+          </button>
+        </div>
       </div>
-      <button class="btn-red" onclick="deleteLearner(${i})" style="background:var(--red-light); color:var(--red); border:none; padding:8px 12px; border-radius:6px; font-weight:600; cursor:pointer;">
-        Delete
-      </button>
+
+      <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:10px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:11px; font-weight:700;">NAME</label>
+            <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700;">COHORT</label>
+            <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:11px; font-weight:700;">START DATE</label>
+            <input type="date" id="edit-start-${i}" value="${l.start || ''}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700;">END DATE</label>
+            <input type="date" id="edit-end-${i}" value="${l.end || ''}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button class="btn-save" onclick="updateLearner(${i})">Save Changes</button>
+          <button class="btn-save" onclick="toggleEditForm(${i}, false)" style="background:#f1f5f9; color:#64748b;">Cancel</button>
+        </div>
+      </div>
     </div>
   `).join('');
 
   el.innerHTML = `
     <div class="page-header">
-      <div class="page-title">Edit Learners</div>
-      <div class="page-sub">Remove learners from the tracking system</div>
+      <div class="page-title">Manage Learners</div>
+      <div class="page-sub">Update learner profiles or remove them</div>
     </div>
     <div style="max-width:600px">${cards}</div>`;
+}
+
+/**
+ * Toggles between the display view and the edit form
+ */
+function toggleEditForm(index, isEditing) {
+  document.getElementById(`view-mode-${index}`).style.display = isEditing ? 'none' : 'flex';
+  document.getElementById(`edit-mode-${index}`).style.display = isEditing ? 'flex' : 'none';
+}
+
+/**
+ * Saves updated details back to the DB object and Firebase
+ */
+function updateLearner(i) {
+  const newName = document.getElementById(`edit-name-${i}`).value.trim();
+  const newCohort = document.getElementById(`edit-cohort-${i}`).value.trim();
+  const newStart = document.getElementById(`edit-start-${i}`).value;
+  const newEnd = document.getElementById(`edit-end-${i}`).value;
+
+  if (!newName) { alert("Name cannot be empty"); return; }
+
+  // Update local DB object
+  DB.learners[i].name = newName;
+  DB.learners[i].cohort = newCohort;
+  DB.learners[i].start = newStart;
+  DB.learners[i].end = newEnd;
+
+  // Sync to Firebase
+  save(); 
+  
+  // Refresh UI
+  renderEdit();
+  renderDashboard();
+  alert("Learner updated successfully!");
 }
 
 function deleteLearner(i) {
