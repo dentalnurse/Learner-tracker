@@ -339,6 +339,7 @@ function renderEdit() {
     <div class="page-header"><div class="page-title">Manage Learners</div></div>
     <div style="max-width: 850px;">
     ${DB.learners.map((l, i) => {
+      
       const sortedIndices = l.acs.map((_, index) => index).sort((a, b) => {
         const acA = l.acs[a]; const acB = l.acs[b];
         const unitA = parseInt(acA.unit) || 0; const unitB = parseInt(acB.unit) || 0;
@@ -352,33 +353,61 @@ function renderEdit() {
         const opts = STATUSES.map(s => `<option value="${s}" ${s === currStatus ? 'selected' : ''}>${s}</option>`).join('');
         return `
           <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:55px;"></td>
-            <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%;"></td>
-            <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px;"></td>
-            <td style="padding:8px 4px;"><select id="edit-status-${i}-${acIdx}">${opts}</select></td>
-            <td style="padding:8px 4px;"><button onclick="removeACRow(${i}, ${acIdx})" style="color:red; background:none; border:none; cursor:pointer;">✕</button></td>
+            <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:55px; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
+            <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
+            <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
+            <td style="padding:8px 4px;"><select id="edit-status-${i}-${acIdx}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">${opts}</select></td>
+            <td style="padding:8px 4px; text-align:center;"><button onclick="removeACRow(${i}, ${acIdx})" style="color:#dc2626; background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px;">✕</button></td>
           </tr>`;
       }).join('');
 
       return `
       <div class="table-card" style="padding:20px; margin-bottom:20px; border-left: 5px solid #64748b;">
         <div id="view-mode-${i}" style="display:flex; justify-content:space-between; align-items:center;">
-          <div><strong>${l.name}</strong> (${l.cohort})</div>
           <div>
-            <button class="btn-save" onclick="toggleEditForm(${i}, true)">Edit Details & ACs</button>
-            <button class="btn-red" onclick="deleteLearner(${i})">Delete</button>
+            <div style="font-weight:700; font-size:1.1rem; color:var(--ink);">${l.name}</div>
+            <div style="font-size:0.85rem; color:#64748b;">${l.cohort} • ${l.type.toUpperCase()}</div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="background:#e2e8f0; color:#475569; border:none;">Edit Details & ACs</button>
+            <button class="btn-red" onclick="deleteLearner(${i})" style="background:#fee2e2; color:#dc2626; border:1px solid #fecaca; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Delete</button>
           </div>
         </div>
+
         <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:15px;">
-          <input type="text" id="edit-name-${i}" value="${l.name}">
-          <input type="text" id="edit-cohort-${i}" value="${l.cohort}">
-          <table style="width:100%; border-collapse:collapse;">
-            <thead><tr style="text-align:left; font-size:11px;"><th>UNIT</th><th>REF</th><th>QTY</th><th>STATUS</th><th></th></tr></thead>
-            <tbody>${acRows}</tbody>
-          </table>
-          <div style="display:flex; gap:10px;">
-            <button class="btn-save" onclick="updateLearner(${i})">Save Changes</button>
-            <button class="btn-save" style="background:#eee; color:#333;" onclick="toggleEditForm(${i}, false)">Cancel</button>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+             <div>
+               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">FULL NAME</label>
+               <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
+             </div>
+             <div>
+               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">COHORT / GROUP</label>
+               <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
+             </div>
+          </div>
+          
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+            <div style="padding:10px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+               <span style="font-size:12px; font-weight:800; color:#475569;">UNIT CRITERIA (ACs)</span>
+               <button onclick="addACRow(${i})" style="font-size:11px; padding:5px 10px; cursor:pointer; background:#fff; border:1px solid #cbd5e1; border-radius:4px;">+ Add New Unit</button>
+            </div>
+            <table style="width:100%; border-collapse:collapse; background:#fff;">
+              <thead style="background:#f1f5f9; font-size:11px; text-align:left; color:#64748b;">
+                <tr>
+                  <th style="padding:10px;">UNIT</th>
+                  <th style="padding:10px;">REFERENCE / DESCRIPTION</th>
+                  <th style="padding:10px;">QTY</th>
+                  <th style="padding:10px;">STATUS</th>
+                  <th style="width:40px;"></th>
+                </tr>
+              </thead>
+              <tbody>${acRows}</tbody>
+            </table>
+          </div>
+
+          <div style="display:flex; gap:10px; padding-top:15px; border-top:1px solid #eee; margin-top:5px;">
+            <button class="btn-save" onclick="updateLearner(${i})" style="border:none;">Save Changes</button>
+            <button class="btn-save" style="background:#f1f5f9; color:#64748b; border:none;" onclick="toggleEditForm(${i}, false)">Cancel</button>
           </div>
         </div>
       </div>`;
