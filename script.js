@@ -455,6 +455,40 @@ function updateLearner(i) {
   alert("Learner updated successfully!");
 }
 
+/**
+ * Toggles between the display view and the edit form
+ */
+function toggleEditForm(index, isEditing) {
+  document.getElementById(`view-mode-${index}`).style.display = isEditing ? 'none' : 'flex';
+  document.getElementById(`edit-mode-${index}`).style.display = isEditing ? 'flex' : 'none';
+}
+
+/**
+ * Saves updated details back to the DB object and Firebase
+ */
+function updateLearner(i) {
+  const newName = document.getElementById(`edit-name-${i}`).value.trim();
+  const newCohort = document.getElementById(`edit-cohort-${i}`).value.trim();
+  const newStart = document.getElementById(`edit-start-${i}`).value;
+  const newEnd = document.getElementById(`edit-end-${i}`).value;
+
+  if (!newName) { alert("Name cannot be empty"); return; }
+
+  // Update local DB object
+  DB.learners[i].name = newName;
+  DB.learners[i].cohort = newCohort;
+  DB.learners[i].start = newStart;
+  DB.learners[i].end = newEnd;
+
+  // Sync to Firebase
+  save(); 
+  
+  // Refresh UI
+  renderEdit();
+  renderDashboard();
+  alert("Learner updated successfully!");
+}
+
 function deleteLearner(i) {
   if (confirm(`Are you sure you want to delete ${DB.learners[i].name}? This cannot be undone.`)) {
     DB.learners.splice(i, 1);
