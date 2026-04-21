@@ -221,16 +221,37 @@ function learnerBar(id,curr,fn){
 }
 
 function renderDashboard(){
-  const el=document.getElementById('tab-dashboard');
-  if(!DB.learners.length){el.innerHTML='<div class="empty">No learners yet. Add one in the Settings tab.</div>';return;}
-  const l=DB.learners[cDash];
-  const al=acList(l);
-  const s=getStats(l);
-  const pbClass=s.pct>=50?'':s.pct>=25?'amber':'red';
+  const el = document.getElementById('tab-dashboard'); // Restored your original ID
+  if(!DB.learners.length){
+    el.innerHTML = '<div class="empty">No learners yet. Add one in the Settings tab.</div>';
+    return;
+  }
+  
+  const l = DB.learners[cDash];
+  const al = acList(l);
+  const s = getStats(l);
 
-  const rows=al.map((ac,i)=>{
-    const st=l.progress[i]||'Not started';
-    return`<tr>
+  // --- SORTING LOGIC START ---
+  // We create a map of indices so we can sort the display without breaking the data
+  const sortedIndices = al.map((_, index) => index).sort((a, b) => {
+    const acA = al[a];
+    const acB = al[b];
+    
+    // Sort by Unit Number first
+    const unitA = parseInt(acA.unit) || 0;
+    const unitB = parseInt(acB.unit) || 0;
+    if (unitA !== unitB) return unitA - unitB;
+
+    // Sort by Reference second (e.g., 1.1.1 vs 1.1.4)
+    return acA.ref.localeCompare(acB.ref, undefined, { numeric: true, sensitivity: 'base' });
+  });
+  // --- SORTING LOGIC END ---
+
+  // Generate rows using the sorted order
+  const rows = sortedIndices.map(idx => {
+    const ac = al[idx];
+    const st = l.progress[idx] || 'Not started';
+    return `<tr>
       <td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td>
       <td class="ac-ref">${ac.ref}</td>
       <td style="text-align:center">${ac.n||1}</td>
@@ -238,7 +259,7 @@ function renderDashboard(){
     </tr>`;
   }).join('');
 
-  el.innerHTML=`
+  el.innerHTML = `
     <div class="page-header"><div class="page-title">Dashboard</div></div>
     <div class="learner-bar" id="dash-btns"></div>
     <div class="profile-card">
@@ -258,7 +279,8 @@ function renderDashboard(){
         <tbody>${rows}</tbody>
       </table>
     </div>`;
-  learnerBar('dash-btns',cDash,'selectDash');
+    
+  learnerBar('dash-btns', cDash, 'selectDash');
 }
 function selectDash(i){cDash=i;renderDashboard()}
 
@@ -369,92 +391,150 @@ function renderEdit() {
     return; 
   }
 
-  const cards = DB.learners.map((l, i) => `
-    <div class="table-card" id="edit-card-${i}" style="padding:16px; margin-bottom:12px;">
+  const cards = DB.learners.map((l, i) => {
+    
+    // --- SORTING LOGIC START ---
+    // Sort indices by Unit (number) and then Reference (string)
+    const sortedIndices = l.acs.map((_, index) => index).sort((a, b) => {
+      const acA = l.acs[a];
+      const acB = l.acs[b];
+      
+      const unitA = parseInt(acA.unit) || 0;
+      const unitB = parseInt(acB.unit) || 0;
+      
+      if (unitA !== unitB) return unitA - unitB;
+      return acA.ref.localeCompare(acB.ref, undefined, { numeric: true });
+    });
+    // --- SORTING LOGIC END ---
+
+    // Map through the SORTED indices to create the rows
+    const acRows = sortedIndices.map((acIdx) => {
+      const ac = l.acs[acIdx];
+      const currStatus = l.progress[acIdx] || 'Not started';
+      const opts = STATUSES.map(s => `<option value="${s}" ${s === currStatus ? 'selected' : ''}>${s}</option>`).join('');
+      
+      return `
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:50px; padding:4px; border:1px solid #ccc; border-radius:4px;"></td>
+          <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;"></td>
+          <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px; padding:4px; border:1px solid #ccc; border-radius:4px;"></td>
+          <td style="padding:8px 4px;">
+            <select id="edit-ac-status-${i}-${acIdx}" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:4px;">${opts}</select>
+          </td>
+          <td style="padding:8px 4px; text-align:center;">
+            <button onclick="removeAC(${i}, ${acIdx})" style="background:none; border:none; color:var(--red); cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    return `
+    <div class="table-card" id="edit-card-${i}" style="padding:20px; margin-bottom:20px; border: 1px solid #ddd; border-radius: 8px;">
       <div id="view-mode-${i}" style="display:flex; align-items:center; justify-content:space-between;">
         <div>
-          <div style="font-weight:700; color:var(--ink); font-size:16px;">${l.name}</div>
-          <div style="font-size:12px; color:var(--ink3)">${l.cohort} • ${l.type.toUpperCase()}</div>
+          <div style="font-weight:700; color:var(--ink); font-size:18px;">${l.name}</div>
+          <div style="font-size:12px; color:var(--ink3); font-weight:600;">${l.cohort} • ${l.type.toUpperCase()}</div>
         </div>
-        <div>
-          <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="margin-right:8px; background:#e2e8f0; color:#475569;">Edit</button>
-          <button class="btn-red" onclick="deleteLearner(${i})" style="background:var(--red-light); color:var(--red); border:none; padding:8px 12px; border-radius:6px; font-weight:600; cursor:pointer;">
-            Delete
-          </button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="background:#e2e8f0; color:#475569; border:none; padding:10px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Details</button>
+          <button class="btn-red" onclick="deleteLearner(${i})" style="background:var(--red-light); color:var(--red); border:none; padding:10px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Delete</button>
         </div>
       </div>
 
-      <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:10px;">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+      <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:15px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
           <div>
-            <label style="font-size:11px; font-weight:700;">NAME</label>
-            <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            <label style="display:block; font-size:11px; font-weight:800; color:#666; margin-bottom:5px;">NAME</label>
+            <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;">
           </div>
           <div>
-            <label style="font-size:11px; font-weight:700;">COHORT</label>
-            <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-          </div>
-        </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-          <div>
-            <label style="font-size:11px; font-weight:700;">START DATE</label>
-            <input type="date" id="edit-start-${i}" value="${l.start || ''}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-          </div>
-          <div>
-            <label style="font-size:11px; font-weight:700;">END DATE</label>
-            <input type="date" id="edit-end-${i}" value="${l.end || ''}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            <label style="display:block; font-size:11px; font-weight:800; color:#666; margin-bottom:5px;">COHORT</label>
+            <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;">
           </div>
         </div>
-        <div style="display:flex; gap:10px; margin-top:10px;">
-          <button class="btn-save" onclick="updateLearner(${i})">Save Changes</button>
-          <button class="btn-save" onclick="toggleEditForm(${i}, false)" style="background:#f1f5f9; color:#64748b;">Cancel</button>
+
+        <div style="border:1px solid #eee; border-radius:6px; margin-top:5px; background:#fff;">
+          <div style="background:#f8fafc; padding:10px; font-size:12px; font-weight:800; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee;">
+            <span>UNIT DETAILS & STATUS</span>
+            <button onclick="addACRow(${i})" style="font-size:11px; padding:4px 8px; cursor:pointer; background:#fff; border:1px solid #ccc; border-radius:4px;">+ Add New Unit</button>
+          </div>
+          <table style="width:100%; border-collapse:collapse;">
+            <thead style="background:#f1f5f9;">
+              <tr style="font-size:10px; text-align:left; color:#475569;">
+                <th style="padding:8px 4px;">UNIT</th>
+                <th style="padding:8px 4px;">REFERENCE</th>
+                <th style="padding:8px 4px;">QTY</th>
+                <th style="padding:8px 4px;">STATUS</th>
+                <th style="width:30px;"></th>
+              </tr>
+            </thead>
+            <tbody>${acRows}</tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; gap:12px; margin-top:10px; padding-top:15px; border-top:1px solid #eee;">
+          <button class="btn-save" onclick="updateLearner(${i})" style="padding:10px 20px;">Save Changes</button>
+          <button class="btn-save" onclick="toggleEditForm(${i}, false)" style="background:#f1f5f9; color:#64748b; padding:10px 20px;">Cancel</button>
         </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   el.innerHTML = `
     <div class="page-header">
       <div class="page-title">Manage Learners</div>
-      <div class="page-sub">Update learner profiles or remove them</div>
+      <div class="page-sub">Edit details, add/remove units, or delete profiles</div>
     </div>
-    <div style="max-width:600px">${cards}</div>`;
+    <div style="max-width:750px">${cards}</div>`;
 }
 
 /**
- * Toggles between the display view and the edit form
+ * Toggles visibility between the view mode and edit form
  */
 function toggleEditForm(index, isEditing) {
-  document.getElementById(`view-mode-${index}`).style.display = isEditing ? 'none' : 'flex';
-  document.getElementById(`edit-mode-${index}`).style.display = isEditing ? 'flex' : 'none';
+  const viewEl = document.getElementById(`view-mode-${index}`);
+  const editEl = document.getElementById(`edit-mode-${index}`);
+  if (viewEl && editEl) {
+    viewEl.style.display = isEditing ? 'none' : 'flex';
+    editEl.style.display = isEditing ? 'flex' : 'none';
+  }
 }
 
-/**
- * Saves updated details back to the DB object and Firebase
- */
 function updateLearner(i) {
-  const newName = document.getElementById(`edit-name-${i}`).value.trim();
-  const newCohort = document.getElementById(`edit-cohort-${i}`).value.trim();
-  const newStart = document.getElementById(`edit-start-${i}`).value;
-  const newEnd = document.getElementById(`edit-end-${i}`).value;
+  const name = document.getElementById(`edit-name-${i}`).value.trim();
+  if (!name) { alert("Name cannot be empty"); return; }
 
-  if (!newName) { alert("Name cannot be empty"); return; }
+  // Save each editable row back into the ACs array
+  DB.learners[i].acs.forEach((ac, acIdx) => {
+    const u = document.getElementById(`edit-unit-${i}-${acIdx}`).value;
+    const r = document.getElementById(`edit-ref-${i}-${acIdx}`).value;
+    const q = document.getElementById(`edit-qty-${i}-${acIdx}`).value;
+    const s = document.getElementById(`edit-ac-status-${i}-${acIdx}`).value;
 
-  // Update local DB object
-  DB.learners[i].name = newName;
-  DB.learners[i].cohort = newCohort;
-  DB.learners[i].start = newStart;
-  DB.learners[i].end = newEnd;
+    DB.learners[i].acs[acIdx] = { unit: u, ref: r, n: parseInt(q) || 1 };
+    DB.learners[i].progress[acIdx] = s;
+  });
 
-  // Sync to Firebase
-  save(); 
+  DB.learners[i].name = name;
+  DB.learners[i].cohort = document.getElementById(`edit-cohort-${i}`).value;
   
-  // Refresh UI
-  renderEdit();
+  save(); // Sync to Firebase
+  renderEdit(); 
   renderDashboard();
-  alert("Learner updated successfully!");
 }
 
+function removeAC(learnerIdx, acIdx) {
+  if(confirm("Permanently remove this unit row?")) {
+    DB.learners[learnerIdx].acs.splice(acIdx, 1);
+    DB.learners[learnerIdx].progress.splice(acIdx, 1);
+    renderEdit();
+  }
+}
+
+function addACRow(learnerIdx) {
+  DB.learners[learnerIdx].acs.push({ unit: 'New', ref: '...', n: 1 });
+  DB.learners[learnerIdx].progress.push('Not started');
+  renderEdit();
+}
 function deleteLearner(i) {
   if (confirm(`Are you sure you want to delete ${DB.learners[i].name}? This cannot be undone.`)) {
     DB.learners.splice(i, 1);
