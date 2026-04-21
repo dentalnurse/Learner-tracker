@@ -10,7 +10,6 @@ const firebaseConfig = {
   measurementId: "G-T1X5ST3CE7"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
@@ -35,7 +34,6 @@ function initialFirebaseLoad() {
       const data = snapshot.val();
       if (data && data.learners) {
         DB = data;
-        console.log("Data loaded from Firebase.");
       } else {
         DB = { learners: [] };
         save(); 
@@ -46,64 +44,6 @@ function initialFirebaseLoad() {
       console.error("Firebase Error:", error);
       renderDashboard();
     });
-}
-
-// ── LEARNER MANAGEMENT ───────────────────────
-
-function addLearner() {
-  const name = document.getElementById('add-name').value.trim();
-  const cohort = document.getElementById('add-cohort').value.trim();
-  const type = document.getElementById('add-type').value;
-  const start = document.getElementById('add-start').value;
-  const end = document.getElementById('add-end').value;
-  const ttRaw = document.getElementById('add-timetable').value.trim();
-  
-  if(!name) { alert("Please enter a name"); return; }
-
-  const al = type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
-  const tl = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-  
-  // Initialize timetable as an array of objects immediately
-  const timetable = tl.map((t) => ({ 
-    label: t.label, 
-    reqs: t.reqs || '', 
-    date: '' 
-  }));
-
-  if(ttRaw) {
-    ttRaw.split('\n').forEach((line, i) => {
-      if(i < timetable.length) {
-        // Support "ID - Date" or just "Date" during initial add
-        const parts = line.split('-');
-        timetable[i].date = parts.length > 1 ? parts[1].trim() : parts[0].trim();
-      }
-    });
-  }
-
-  const newLearner = {
-    id: name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
-    name, cohort, type, start, end, 
-    timetable, // This is now an array of objects
-    progress: al.map(() => 'Not started'),
-    acs: al.map(ac => ({...ac}))
-  };
-
-  DB.learners.push(newLearner);
-  save(); 
-  
-  document.getElementById('add-name').value = '';
-  alert(name + " added!");
-  renderDashboard();
-}
-
-function deleteLearner(index) {
-  if(confirm("Are you sure you want to delete " + DB.learners[index].name + "?")) {
-    DB.learners.splice(index, 1);
-    save();
-    cDash = 0;
-    renderDashboard();
-    renderEdit();
-  }
 }
 
 // ── DATA STRUCTURES ───────────────────────
@@ -268,7 +208,7 @@ function renderMarking(){
     return`<tr>
       <td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td>
       <td>${ac.ref}</td>
-      <td><select onchange="DB.learners[${cMark}].progress[${i}]=this.value">${opts}</select></td>
+      <td><select onchange="DB.learners[${cMark}].progress[${i}]=this.value; save();">${opts}</select></td>
     </tr>`;
   }).join('');
   el.innerHTML=`
@@ -276,7 +216,6 @@ function renderMarking(){
     <div class="learner-bar" id="mark-btns"></div>
     <div class="table-card">
       <table class="tbl"><tbody>${rows}</tbody></table>
-      <div class="save-row"><button class="btn-save" onclick="save()">Save to Cloud</button></div>
     </div>`;
   learnerBar('mark-btns',cMark,'selectMark');
 }
@@ -284,27 +223,33 @@ function selectMark(i){cMark=i;renderMarking()}
 
 // ── DYNAMIC TIMETABLE ───────────────────────
 
-/**
- * Renders the Timetable view with visible IDs for bulk mapping
- */
 function renderTimetable() {
   const el = document.getElementById('tab-timetable');
   if (!DB.learners.length) { el.innerHTML = '<div class="empty">No learners found.</div>'; return; }
   
   const l = DB.learners[cTT]; 
-  const labels = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
 
-  // Build the table rows with an ID column (index + 1)
-  const rows = labels.map((t, i) => `
+  // Initialize/Migration
+  if (!l.timetable || l.timetable.length === 0 || typeof l.timetable[0] === 'string') {
+    const oldDates = l.timetable || [];
+    const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
+    l.timetable = tl.map((t, i) => ({
+      label: t.label,
+      reqs: t.reqs || '',
+      date: typeof oldDates[i] === 'string' ? oldDates[i] : ""
+    }));
+  }
+
+  const rows = l.timetable.map((item, i) => `
     <tr>
-      <td style="width:10%; text-align:center; font-weight:bold; color:var(--ink3)">${i + 1}</td>
+      <td style="text-align:center; font-weight:bold; color:#64748b;">${i + 1}</td>
       <td style="width:45%">
-        <div style="font-weight:600; color:var(--ink)">${t.label}</div>
-        <div style="font-size:11px; color:var(--ink3)">${t.reqs || ''}</div>
+        <div style="font-weight:600; color:var(--ink)">${item.label}</div>
+        <div style="font-size:11px; color:#888">${item.reqs || ''}</div>
       </td>
       <td>
         <input type="text" class="tt-input" 
-        value="${l.timetable[i].date || ''}" 
+        value="${item.date || ''}" 
         onchange="updateTTDate(${cTT}, ${i}, this.value)"
         placeholder="e.g. 12 May 26">
       </td>
@@ -312,114 +257,79 @@ function renderTimetable() {
 
   el.innerHTML = `
     <div class="page-header">
-      <div class="page-title">Timetable Management</div>
+      <div class="page-title">Timetable</div>
       <div class="page-sub">Set deadlines for <strong>${l.name}</strong></div>
     </div>
-    
     <div class="learner-bar" id="tt-btns"></div>
-
     <div style="display: grid; grid-template-columns: 1fr 320px; gap: 20px; margin-top:20px;">
       <div class="table-card">
         <table class="tbl">
-          <thead>
-            <tr>
-              <th style="width:40px">ID</th>
-              <th>Unit / Phase</th>
-              <th>Deadline Date</th>
-            </tr>
-          </thead>
+          <thead><tr><th style="width:40px">ID</th><th>Unit</th><th>Deadline</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
-        <div style="padding:16px; border-top:1px solid var(--border)">
-           <button class="btn-save" onclick="save()">Save Timetable to Cloud</button>
-        </div>
       </div>
-
       <div class="table-card" style="padding:15px; background:#f8fafc;">
         <h4 style="margin:0 0 10px 0;">Bulk ID Import</h4>
-        <p style="font-size:11px; color:#666; margin-bottom:10px;">
-          Paste list as: <strong>ID - Date</strong><br>
-          Example:<br>
-          1 - 01/01/2026<br>
-          2 - 02/02/2026
-        </p>
-        <textarea id="bulk-id-input" style="width:100%; height:250px; padding:10px; border:1px solid #ccc; border-radius:4px; font-family:monospace; font-size:12px;"></textarea>
-        <button class="btn-save" style="width:100%; margin-top:10px;" onclick="applyIDBulkImport(${cTT})">Process Bulk List</button>
+        <p style="font-size:11px; color:#666; margin-bottom:10px;">Format: ID - Date (e.g. 1 - 25 Dec)</p>
+        <textarea id="bulk-id-input" style="width:100%; height:250px; padding:10px; font-size:12px;"></textarea>
+        <button class="btn-save" style="width:100%; margin-top:10px;" onclick="applyIDBulkImport(${cTT})">Process & Sync</button>
       </div>
     </div>`;
-    
   learnerBar('tt-btns', cTT, 'selectTT');
 }
 
-/**
- * Processes the "ID - Date" bulk format
- */
+function updateTTDate(li, index, val) {
+  if (!DB.learners[li].timetable[index]) return;
+  DB.learners[li].timetable[index].date = val;
+  save();
+}
+
 function applyIDBulkImport(li) {
   const input = document.getElementById('bulk-id-input').value.trim();
   if (!input) return;
-
   const lines = input.split('\n');
-  let updateCount = 0;
-  const learner = DB.learners[li];
-
-  if (!learner.timetable) {
-    const tl = learner.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-    learner.timetable = tl.map(t => ({ label: t.label, date: '', reqs: t.reqs || '' }));
-  }
-
+  let count = 0;
   lines.forEach(line => {
     const match = line.match(/^(\d+)[\s\-:]+(.*)$/);
     if (match) {
-      const inputID = parseInt(match[1]);
-      const dateVal = match[2].trim();
-      const arrayIndex = inputID - 1;
-
-      if (arrayIndex >= 0 && arrayIndex < learner.timetable.length) {
-        learner.timetable[arrayIndex].date = dateVal;
-        updateCount++;
+      const idx = parseInt(match[1]) - 1;
+      if (DB.learners[li].timetable[idx]) {
+        DB.learners[li].timetable[idx].date = match[2].trim();
+        count++;
       }
     }
   });
-
-  if (updateCount > 0) {
-    renderTimetable();
-    save(); // <--- This triggers the auto-sync for the whole list
-    alert(`Successfully synced ${updateCount} dates to the cloud!`);
-  } else {
-    alert("No valid IDs found. Use format: 1 - Date");
-  }
-}
-
-function updateTTDate(li, index, val) {
-  if (!DB.learners[li].timetable) return;
-
-  // Update the local data
-  if (typeof DB.learners[li].timetable[index] === 'object') {
-    DB.learners[li].timetable[index].date = val;
-  } else {
-    DB.learners[li].timetable[index] = { label: "Target", date: val, reqs: "" };
-  }
-
-  // Auto-Sync to Cloud
-  save(); 
-  console.log(`Auto-synced date for ${DB.learners[li].name}`);
+  if(count > 0) { save(); renderTimetable(); alert(`Synced ${count} dates.`); }
 }
 
 function selectTT(i) { cTT = i; renderTimetable(); }
-function addTTRow() { DB.learners[cTT].timetable.push({ label: "New Target", date: "", reqs: "" }); renderTimetable(); }
-function removeTTRow(i) { DB.learners[cTT].timetable.splice(i, 1); renderTimetable(); }
 
-function applyBulkTimetable(idx) {
-  const text = document.getElementById('bulk-tt-input').value.trim();
-  if(!text) return;
-  DB.learners[idx].timetable = text.split('\n').map(line => {
-    const [name, date] = line.split('|');
-    return { label: name ? name.trim() : "Target", date: date ? date.trim() : "", reqs: "" };
-  });
-  save(); renderTimetable();
+// ── LEARNER MANAGEMENT & EDIT ───────────────────────
+
+function addLearner() {
+  const name = document.getElementById('add-name').value.trim();
+  const cohort = document.getElementById('add-cohort').value.trim();
+  const type = document.getElementById('add-type').value;
+  const start = document.getElementById('add-start').value;
+  const end = document.getElementById('add-end').value;
+  
+  if(!name) { alert("Please enter a name"); return; }
+  const al = type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
+  const tl = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
+  
+  const newLearner = {
+    id: name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
+    name, cohort, type, start, end,
+    timetable: tl.map(t => ({ label: t.label, reqs: t.reqs || '', date: '' })),
+    progress: al.map(() => 'Not started'),
+    acs: al.map(ac => ({...ac}))
+  };
+
+  DB.learners.push(newLearner);
+  save();
+  document.getElementById('add-name').value = '';
+  renderDashboard();
 }
-
-// ── EDIT / SETTINGS ───────────────────────
 
 function renderEdit() {
   const el = document.getElementById('tab-edit');
@@ -429,91 +339,72 @@ function renderEdit() {
     <div class="page-header"><div class="page-title">Manage Learners</div></div>
     <div style="max-width: 850px;">
     ${DB.learners.map((l, i) => {
-      
-      // --- SORTING LOGIC START ---
-      // We sort the indices based on the Unit and Reference
       const sortedIndices = l.acs.map((_, index) => index).sort((a, b) => {
-        const acA = l.acs[a];
-        const acB = l.acs[b];
-        
-        const unitA = parseInt(acA.unit) || 0;
-        const unitB = parseInt(acB.unit) || 0;
-        
+        const acA = l.acs[a]; const acB = l.acs[b];
+        const unitA = parseInt(acA.unit) || 0; const unitB = parseInt(acB.unit) || 0;
         if (unitA !== unitB) return unitA - unitB;
         return acA.ref.localeCompare(acB.ref, undefined, { numeric: true });
       });
-      // --- SORTING LOGIC END ---
 
       const acRows = sortedIndices.map((acIdx) => {
         const ac = l.acs[acIdx];
         const currStatus = l.progress[acIdx] || 'Not started';
         const opts = STATUSES.map(s => `<option value="${s}" ${s === currStatus ? 'selected' : ''}>${s}</option>`).join('');
-        
         return `
           <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:55px; padding:5px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%; padding:5px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px; padding:5px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;">
-              <select id="edit-status-${i}-${acIdx}" style="width:100%; padding:5px; border:1px solid #cbd5e1; border-radius:4px;">${opts}</select>
-            </td>
-            <td style="padding:8px 4px; text-align:center;">
-              <button onclick="removeACRow(${i}, ${acIdx})" style="background:none; border:none; color:#dc2626; cursor:pointer; font-weight:bold;">✕</button>
-            </td>
+            <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:55px;"></td>
+            <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%;"></td>
+            <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px;"></td>
+            <td style="padding:8px 4px;"><select id="edit-status-${i}-${acIdx}">${opts}</select></td>
+            <td style="padding:8px 4px;"><button onclick="removeACRow(${i}, ${acIdx})" style="color:red; background:none; border:none; cursor:pointer;">✕</button></td>
           </tr>`;
       }).join('');
 
       return `
       <div class="table-card" style="padding:20px; margin-bottom:20px; border-left: 5px solid #64748b;">
         <div id="view-mode-${i}" style="display:flex; justify-content:space-between; align-items:center;">
+          <div><strong>${l.name}</strong> (${l.cohort})</div>
           <div>
-            <div style="font-weight:700; font-size:1.1rem; color:var(--ink);">${l.name}</div>
-            <div style="font-size:0.85rem; color:#64748b;">${l.cohort} • ${l.type.toUpperCase()}</div>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="background:#e2e8f0; color:#475569;">Edit Details & ACs</button>
-            <button class="btn-red" onclick="deleteLearner(${i})" style="background:#fee2e2; color:#dc2626; border:1px solid #fecaca; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Delete</button>
+            <button class="btn-save" onclick="toggleEditForm(${i}, true)">Edit Details & ACs</button>
+            <button class="btn-red" onclick="deleteLearner(${i})">Delete</button>
           </div>
         </div>
-
         <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:15px;">
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-            <div>
-              <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">NAME</label>
-              <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
-            </div>
-            <div>
-              <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">COHORT</label>
-              <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
-            </div>
-          </div>
-
-          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-            <div style="padding:10px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:12px; font-weight:800; color:#475569;">UNIT CRITERIA (ACs)</span>
-              <button onclick="addACRow(${i})" style="font-size:11px; padding:5px 10px; cursor:pointer; background:#fff; border:1px solid #cbd5e1; border-radius:4px;">+ Add Unit</button>
-            </div>
-            <table style="width:100%; border-collapse:collapse; background:#fff;">
-              <thead style="background:#f1f5f9;">
-                <tr style="font-size:10px; text-align:left; color:#64748b;">
-                  <th style="padding:8px;">UNIT</th>
-                  <th style="padding:8px;">REF</th>
-                  <th style="padding:8px;">QTY</th>
-                  <th style="padding:8px;">STATUS</th>
-                  <th style="width:30px;"></th>
-                </tr>
-              </thead>
-              <tbody>${acRows}</tbody>
-            </table>
-          </div>
-
-          <div style="display:flex; gap:12px; margin-top:5px; padding-top:15px; border-top:1px solid #eee;">
+          <input type="text" id="edit-name-${i}" value="${l.name}">
+          <input type="text" id="edit-cohort-${i}" value="${l.cohort}">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead><tr style="text-align:left; font-size:11px;"><th>UNIT</th><th>REF</th><th>QTY</th><th>STATUS</th><th></th></tr></thead>
+            <tbody>${acRows}</tbody>
+          </table>
+          <div style="display:flex; gap:10px;">
             <button class="btn-save" onclick="updateLearner(${i})">Save Changes</button>
-            <button class="btn-save" style="background:#f1f5f9; color:#64748b;" onclick="toggleEditForm(${i}, false)">Cancel</button>
+            <button class="btn-save" style="background:#eee; color:#333;" onclick="toggleEditForm(${i}, false)">Cancel</button>
           </div>
         </div>
-      </div>`}).join('')}
+      </div>`;
+    }).join('')}
     </div>`;
+}
+
+function updateLearner(i) {
+  DB.learners[i].name = document.getElementById(`edit-name-${i}`).value;
+  DB.learners[i].cohort = document.getElementById(`edit-cohort-${i}`).value;
+  DB.learners[i].acs.forEach((ac, acIdx) => {
+    DB.learners[i].acs[acIdx].unit = document.getElementById(`edit-unit-${i}-${acIdx}`).value;
+    DB.learners[i].acs[acIdx].ref = document.getElementById(`edit-ref-${i}-${acIdx}`).value;
+    DB.learners[i].acs[acIdx].n = parseInt(document.getElementById(`edit-qty-${i}-${acIdx}`).value) || 1;
+    DB.learners[i].progress[acIdx] = document.getElementById(`edit-status-${i}-${acIdx}`).value;
+  });
+  save(); renderEdit(); renderDashboard();
+}
+
+function toggleEditForm(i, edit) {
+  document.getElementById(`view-mode-${i}`).style.display = edit ? 'none' : 'flex';
+  document.getElementById(`edit-mode-${i}`).style.display = edit ? 'flex' : 'none';
+}
+
+function deleteLearner(index) {
+  if(confirm("Are you sure?")) { DB.learners.splice(index, 1); save(); renderDashboard(); renderEdit(); }
 }
 
 function addACRow(li) {
@@ -523,49 +414,9 @@ function addACRow(li) {
 }
 
 function removeACRow(li, aci) {
-  if (confirm("Remove this unit criteria?")) {
-    DB.learners[li].acs.splice(aci, 1);
-    DB.learners[li].progress.splice(aci, 1);
-    renderEdit();
-  }
-}
-
-function updateLearner(i) {
-  const newName = document.getElementById(`edit-name-${i}`).value.trim();
-  const newCohort = document.getElementById(`edit-cohort-${i}`).value.trim();
-
-  if (!newName) { alert("Name is required"); return; }
-
-  // Update Main Details
-  DB.learners[i].name = newName;
-  DB.learners[i].cohort = newCohort;
-
-  // Update ACs and Statuses by looping through the table inputs
-  DB.learners[i].acs.forEach((ac, acIdx) => {
-    const u = document.getElementById(`edit-unit-${i}-${acIdx}`).value;
-    const r = document.getElementById(`edit-ref-${i}-${acIdx}`).value;
-    const q = document.getElementById(`edit-qty-${i}-${acIdx}`).value;
-    const s = document.getElementById(`edit-status-${i}-${acIdx}`).value;
-
-    DB.learners[i].acs[acIdx] = { unit: u, ref: r, n: parseInt(q) || 1 };
-    DB.learners[i].progress[acIdx] = s;
-  });
-
-  save(); // Sync to Firebase
+  DB.learners[li].acs.splice(aci, 1);
+  DB.learners[li].progress.splice(aci, 1);
   renderEdit();
-  renderDashboard();
-  alert("Learner and ACs updated successfully!");
-}
-
-function toggleEditForm(i, edit) {
-  document.getElementById(`view-mode-${i}`).style.display = edit ? 'none' : 'flex';
-  document.getElementById(`edit-mode-${i}`).style.display = edit ? 'flex' : 'none';
-}
-
-function updateLearner(i) {
-  DB.learners[i].name = document.getElementById(`edit-name-${i}`).value;
-  DB.learners[i].cohort = document.getElementById(`edit-cohort-${i}`).value;
-  save(); renderEdit(); renderDashboard();
 }
 
 window.onload = () => { initialFirebaseLoad(); };
