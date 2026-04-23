@@ -399,3 +399,13 @@ select:focus{outline:none;border-color:var(--teal)}
   background: var(--cream2);
   border: 1px dashed var(--teal);
 }
+/* Add to style.css */
+.lpill.marked-done {
+  border-color: var(--teal) !important;
+  background: var(--teal-l) !important;
+  color: var(--teal2) !important;
+}
+
+.lpill.marked-done .lpill-dot {
+  background: var(--teal);
+}
