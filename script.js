@@ -10,174 +10,131 @@ const firebaseConfig = {
   measurementId: "G-T1X5ST3CE7"
 };
 
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
 // ── DATA CORE ───────────────────────
 let DB = { learners: [] };
-let cDash=0, cMark=0, cTT=0, cEdit=0;
+let cDash=0, cMark=0, cTT=0;
+let currentCourseView = 'dip'; 
+let DIPLOMA_ACS = [], OHE_ACS_NEW = [];
+let draggedItemIndex = null;
+const STATUSES = ['Not started', 'Requires amendments', 'Completed'];
 
-// ── SYNC LOGIC ───────────────────────
+// ── SYNC & LOAD ───────────────────────
+function save() { 
+  return database.ref('backups/latest_sync').set(DB); 
+}
 
-function save() {
-  database.ref('backups/latest_sync').set(DB)
-    .then(() => console.log("Cloud Sync Successful"))
-    .catch((error) => console.error("Cloud Sync Failed:", error));
+/** * MIRROR SYNC: Rebuilds learner data based on Master Template order 
+ * while preserving progress via the unique 'ref' key.
+ */
+function syncLearnerToMaster(learner) {
+  const master = learner.type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
+  if (!master || master.length === 0) return;
+
+  const progressMap = {};
+  if (learner.acs && learner.progress) {
+    learner.acs.forEach((ac, i) => {
+      if (ac.ref) progressMap[ac.ref] = learner.progress[i];
+    });
+  }
+
+  const updatedAcs = [];
+  const updatedProgress = [];
+
+  master.forEach(mItem => {
+    updatedAcs.push({ ...mItem });
+    updatedProgress.push(progressMap[mItem.ref] || 'Not started');
+  });
+
+  learner.acs = updatedAcs;
+  learner.progress = updatedProgress;
 }
 
 function initialFirebaseLoad() {
-  const dashEl = document.getElementById('tab-dashboard');
-  if(dashEl) dashEl.innerHTML = '<div class="empty">Connecting to Firebase...</div>';
-
-  database.ref('backups/latest_sync').once('value')
-    .then((snapshot) => {
-      const data = snapshot.val();
-      if (data && data.learners) {
-        DB = data;
-      } else {
-        DB = { learners: [] };
-        save(); 
-      }
-      renderDashboard(); 
-    })
-    .catch((error) => {
-      console.error("Firebase Error:", error);
-      renderDashboard();
-    });
+  database.ref('courses').once('value').then(cS => {
+    const d = cS.val();
+    if (d) { DIPLOMA_ACS = d.diploma || []; OHE_ACS_NEW = d.ohe || []; }
+    return database.ref('backups/latest_sync').once('value');
+  }).then(lS => {
+    const lData = lS.val();
+    if (lData && lData.learners) { 
+      DB = lData; 
+      DB.learners.forEach(l => syncLearnerToMaster(l));
+    }
+    renderDashboard();
+  }).catch(err => console.error("Initialization Error:", err));
 }
-
-// ── DATA STRUCTURES ───────────────────────
-
-const DIPLOMA_ACS = [
-  {unit:1, ref:'1.1.1',n:1},{unit:1, ref:'1.1.4',n:1},{unit:1, ref:'1.1.5',n:1},
-  {unit:1, ref:'1.1.7',n:1},{unit:1, ref:'1.1.8',n:1},{unit:1, ref:'1.1.9, 1.2.10',n:2},
-  {unit:1, ref:'1.3.2',n:1},{unit:1, ref:'1.2.2, 1.3.4',n:2},{unit:1, ref:'1.3.1, 1.3.3',n:2},
-  {unit:1, ref:'1.2.1',n:1},{unit:1, ref:'5.1.8, 5.1.9',n:2},{unit:1, ref:'5.1.10',n:1},
-  {unit:9, ref:'9.1.2',n:1},{unit:9, ref:'9.1.4',n:1},{unit:9, ref:'9.1.5',n:1},
-  {unit:9, ref:'9.1.7',n:1},{unit:9, ref:'9.1.8',n:1},{unit:9, ref:'9.2.1, 9.2.4',n:2},
-  {unit:9, ref:'9.2.2, 9.2.3, 9.3.2, 9.3.3',n:4},{unit:9, ref:'9.2.5',n:1},
-  {unit:9, ref:'9.2.6, 9.2.7',n:2},{unit:9, ref:'9.2.8',n:1},{unit:9, ref:'9.2.9',n:1},
-  {unit:2, ref:'2.1.1, 2.2.2, 2.2.3',n:3},{unit:2, ref:'2.1.1',n:1},{unit:2, ref:'2.1.7',n:1},
-  {unit:2, ref:'2.2.4',n:1},{unit:2, ref:'2.3.1, 2.3.2, 2.3.3, 2.3.5, 2.3.7',n:5},
-  {unit:3, ref:'1.1.6, 3.1.3',n:2},{unit:3, ref:'3.1.2, 3.1.4',n:2},{unit:3, ref:'6.1.7',n:1},
-  {unit:10,ref:'10.1.2',n:1},{unit:10,ref:'10.1.3, 10.1.4',n:2},{unit:10,ref:'10.1.5',n:1},
-  {unit:10,ref:'10.2.2',n:1},{unit:10,ref:'10.2.3',n:1},
-  {unit:4, ref:'4.1.2',n:1},{unit:4, ref:'4.1.3',n:1},{unit:4, ref:'4.1.4',n:1},
-  {unit:4, ref:'4.2.1, 4.2.3, 4.2.4, 4.2.5, 4.2.6',n:5},
-  {unit:5, ref:'5.1.6',n:1},{unit:5, ref:'5.2.1, 5.1.5',n:2},{unit:5, ref:'5.1.3',n:1},
-  {unit:5, ref:'5.1.7',n:1},{unit:5, ref:'5.1.12',n:1},{unit:5, ref:'5.1.14',n:1},
-  {unit:5, ref:'5.1.1',n:1},{unit:5, ref:'5.1.2',n:1},{unit:5, ref:'5.1.4',n:1},
-  {unit:5, ref:'5.2.15',n:1},{unit:5, ref:'5.2.6',n:1}
-];
-
-const OHE_ACS_NEW = [
-  {unit:'SO', ref:'SO1 – Exhibition/Display/Presentation',n:1},
-  {unit:'SO', ref:'SO2 – Reflective Account (Part 1)',n:1},
-  {unit:'SO', ref:'SO3 – PDP/CPD Log',n:1},
-  {unit:'PCA',ref:'PCA 1',n:1},{unit:'PCA',ref:'PCA 2',n:1},{unit:'PCA',ref:'PCA 3',n:1},
-  {unit:'PCA',ref:'PCA 4',n:1},{unit:'PCA',ref:'PCA 5',n:1},{unit:'PCA',ref:'PCA 6',n:1},
-  {unit:'PCA',ref:'PCA 7',n:1},{unit:'PCA',ref:'PCA 8',n:1},{unit:'PCA',ref:'PCA 9',n:1},
-  {unit:'PCA',ref:'PCA 10',n:1},{unit:'PCA',ref:'PCA 11',n:1},
-  {unit:'CS', ref:'Case Study – Visit 1',n:1},
-  {unit:'CS', ref:'Case Study – Visit 2',n:1},
-  {unit:'CS', ref:'Case Study – Visit 3 + Report',n:1},
-  {unit:'SO', ref:'SO2 – Reflective Account (Part 2)',n:1}
-];
-
-const DIPLOMA_TT_LABELS = [
-  {label:'Professional Practice – Unit 1c',reqs:'2 Knowledge evidence questions\nMWT Decontamination'},
-  {label:'CPD – Unit 9',reqs:'5 Knowledge evidence questions'},
-  {label:'Leading & Teamworking – Unit 2',reqs:'Reflective account'},
-  {label:'Communication – Unit 3',reqs:'MWT Professionalism'},
-  {label:'Risks & Medical Emergencies – Unit 10',reqs:'Medical emergency certificate'},
-  {label:'Inclusive Practice – Unit 4',reqs:'Professional discussion (Teams)'},
-  {label:'Clinical Assessment – 5a',reqs:'MWT Clinical assessment Child/Adult'},
-  {label:'Radiography – 5b',reqs:'MWT Radiography'},
-  {label:'Periodontology – 5c',reqs:'MWT Periodontology'},
-  {label:'Restorative – 6a',reqs:'MWT Restorative/Endo'},
-  {label:'Prosthesis – 6b',reqs:'MWT Removable/Fixed'},
-  {label:'Health & Wellbeing – Unit 8',reqs:'5 Knowledge evidence questions'},
-  {label:'Oral Health – Unit 7',reqs:'MWT OHI simulation'},
-  {label:'Final Portfolio',reqs:'All work finalised'}
-];
-
-const OHE_TT_LABELS = [
-  {label:'Phase 1 – Theory',reqs:''},{label:'Phase 2 – PCAs 1–3',reqs:''},
-  {label:'Phase 3 – PCAs 4–6',reqs:''},{label:'Phase 4 – PCAs 7–9',reqs:''},
-  {label:'Phase 5 – PCAs 10–11',reqs:''},{label:'Phase 6 – SOs',reqs:''},
-  {label:'Exam',reqs:''}
-];
-
-const STATUSES = ['Not started','Requires amendments','Completed'];
 
 // ── UI HELPERS ───────────────────────
-
-function badge(s){
-  if(s==='Completed') return '<span class="sbdg s-done">Completed</span>';
-  if(s==='Requires amendments') return '<span class="sbdg s-amend">Requires amendments</span>';
-  return '<span class="sbdg s-none">Not started</span>';
-}
-
-function initials(n){return n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
-function acList(l){return l.type==='ohe'?OHE_ACS_NEW:DIPLOMA_ACS}
 function ubdgClass(u){
-  if(u==='SO') return 'ubdg ubdg-so';
-  if(u==='CS') return 'ubdg ubdg-cs';
-  if(u==='PCA') return 'ubdg ubdg-pca';
+  const v = String(u||'').toUpperCase();
+  if (v === 'SO') return 'ubdg ubdg-so';
+  if (v === 'CS') return 'ubdg ubdg-cs';
+  if (v === 'PCA') return 'ubdg ubdg-pca';
   return 'ubdg ubdg-d';
 }
-function ubdgLabel(u){return typeof u==='number'?`Unit ${u}`:u}
+function ubdgLabel(u){ return !u ? '??' : (['SO','CS','PCA'].includes(String(u).toUpperCase()) ? u : `Unit ${u}`); }
 
-function learnerBar(id,curr,fn){
-  const el=document.getElementById(id);if(!el)return;
-  el.innerHTML=DB.learners.map((l,i)=>`
-    <button class="lpill${i===curr?' active':''}" onclick="${fn}(${i})">
+function badge(s) {
+  let cls = 's-none';
+  if (s === 'Completed') cls = 's-done';
+  if (s === 'Requires amendments') cls = 's-amend';
+  return `<span class="sbdg ${cls}">${s}</span>`;
+}
+
+function initials(n){ return n ? n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) : '??'; }
+
+function learnerBar(id, curr, fn) {
+  const el = document.getElementById(id);
+  if(!el || !DB.learners) return;
+  el.innerHTML = DB.learners.map((l, i) => `
+    <button class="lpill ${i===curr?'active':''}" onclick="${fn}(${i})">
       <span class="lpill-dot"></span>${l.name}
     </button>`).join('');
 }
 
 // ── NAVIGATION ───────────────────────
-
 function switchTab(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
   const target = document.getElementById('tab-' + name);
-  if (target) target.classList.add('active');
-  btn.classList.add('active');
+  if(target) target.classList.add('active');
+  if(btn) btn.classList.add('active');
+  
   if (name === 'dashboard') renderDashboard();
   if (name === 'marking') renderMarking();
   if (name === 'timetable') renderTimetable();
+  if (name === 'courses') renderCourses();
   if (name === 'edit') renderEdit();
 }
 
-// ── DASHBOARD ───────────────────────
-
-function getStats(l){
-  const al=acList(l);
-  const completedN=al.reduce((a,ac,i)=>a+(l.progress[i]==='Completed'?(ac.n||1):0),0);
-  const totalN=al.reduce((a,ac)=>a+(ac.n||1),0);
-  const pct=Math.round((completedN/totalN)*100) || 0;
-  return{completedN,totalN,pct};
-}
-
-function renderDashboard(){
+// ── VIEWS ───────────────────────
+function renderDashboard() {
   const el = document.getElementById('tab-dashboard');
-  if(!DB.learners.length){ el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
   const l = DB.learners[cDash];
-  const al = acList(l);
-  const s = getStats(l);
+  if (!l) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
 
-  const rows = al.map((ac, idx) => `
+  // 1. Calculate Progress
+  const total = l.acs.length;
+  const done = l.progress.filter(s => s === 'Completed').length;
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // 2. Generate Table Rows
+  const rows = l.acs.map((ac, i) => `
     <tr>
       <td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td>
       <td class="ac-ref">${ac.ref}</td>
       <td style="text-align:center">${ac.n||1}</td>
-      <td>${badge(l.progress[idx])}</td>
+      <td>${badge(l.progress[i])}</td>
     </tr>`).join('');
 
+  // 3. Render HTML with Stat Cards
   el.innerHTML = `
     <div class="page-header"><div class="page-title">Dashboard</div></div>
     <div class="learner-bar" id="dash-btns"></div>
+    
     <div class="profile-card">
       <div class="avatar">${initials(l.name)}</div>
       <div class="profile-info">
@@ -185,267 +142,137 @@ function renderDashboard(){
         <div class="profile-meta"><span>${l.cohort}</span></div>
       </div>
     </div>
+
     <div class="stats-row">
-      <div class="stat-card"><div class="stat-label">Progress</div><div class="stat-value">${s.pct}%</div></div>
-      <div class="stat-card"><div class="stat-label">Done</div><div class="stat-value">${s.completedN}/${s.totalN}</div></div>
+      <div class="stat-card">
+        <div class="stat-label">Progress</div>
+        <div class="stat-value">${percent}%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Done</div>
+        <div class="stat-value">${done}/${total}</div>
+      </div>
     </div>
-    <div class="table-card"><table class="tbl"><tbody>${rows}</tbody></table></div>`;
-    
+
+    <div class="table-card">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Unit</th>
+            <th>Ref</th>
+            <th style="text-align:center">Qty</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
   learnerBar('dash-btns', cDash, 'selectDash');
 }
-function selectDash(i){cDash=i;renderDashboard()}
 
-// ── MARKING ───────────────────────
-
-function renderMarking(){
-  const el=document.getElementById('tab-marking');
-  if(!DB.learners.length){el.innerHTML='<div class="empty">No learners yet.</div>';return;}
-  const l=DB.learners[cMark];
-  const al=acList(l);
-  const rows=al.map((ac,i)=>{
-    const curr=l.progress[i]||'Not started';
-    const opts=STATUSES.map(s=>`<option${s===curr?' selected':''}>${s}</option>`).join('');
-    return`<tr>
-      <td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td>
-      <td>${ac.ref}</td>
-      <td><select onchange="DB.learners[${cMark}].progress[${i}]=this.value; save();">${opts}</select></td>
-    </tr>`;
-  }).join('');
-  el.innerHTML=`
-    <div class="page-header"><div class="page-title">Marking</div></div>
-    <div class="learner-bar" id="mark-btns"></div>
-    <div class="table-card">
-      <table class="tbl"><tbody>${rows}</tbody></table>
-    </div>`;
-  learnerBar('mark-btns',cMark,'selectMark');
+function renderMarking() {
+  const el = document.getElementById('tab-marking');
+  const l = DB.learners[cMark];
+  if(!l) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td>${ac.ref}</td><td><select class="tt-edit-input" style="width:100%" onchange="DB.learners[${cMark}].progress[${i}]=this.value;save();">${STATUSES.map(s=>`<option ${s===(l.progress[i]||'Not started')?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('');
+  el.innerHTML = `<div class="page-header"><div class="page-title">Marking</div></div><div class="learner-bar" id="mark-btns"></div><div class="table-card"><table class="tbl"><tbody>${rows}</tbody></table></div>`;
+  learnerBar('mark-btns', cMark, 'selectMark');
 }
-function selectMark(i){cMark=i;renderMarking()}
-
-// ── DYNAMIC TIMETABLE ───────────────────────
 
 function renderTimetable() {
   const el = document.getElementById('tab-timetable');
-  if (!DB.learners.length) { el.innerHTML = '<div class="empty">No learners found.</div>'; return; }
-  
-  const l = DB.learners[cTT]; 
-
-  // Initialize/Migration
-  if (!l.timetable || l.timetable.length === 0 || typeof l.timetable[0] === 'string') {
-    const oldDates = l.timetable || [];
-    const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-    l.timetable = tl.map((t, i) => ({
-      label: t.label,
-      reqs: t.reqs || '',
-      date: typeof oldDates[i] === 'string' ? oldDates[i] : ""
-    }));
-  }
-
-  const rows = l.timetable.map((item, i) => `
-    <tr>
-      <td style="text-align:center; font-weight:bold; color:#64748b;">${i + 1}</td>
-      <td style="width:45%">
-        <div style="font-weight:600; color:var(--ink)">${item.label}</div>
-        <div style="font-size:11px; color:#888">${item.reqs || ''}</div>
-      </td>
-      <td>
-        <input type="text" class="tt-input" 
-        value="${item.date || ''}" 
-        onchange="updateTTDate(${cTT}, ${i}, this.value)"
-        placeholder="e.g. 12 May 26">
-      </td>
-    </tr>`).join('');
-
-  el.innerHTML = `
-    <div class="page-header">
-      <div class="page-title">Timetable</div>
-      <div class="page-sub">Set deadlines for <strong>${l.name}</strong></div>
-    </div>
-    <div class="learner-bar" id="tt-btns"></div>
-    <div style="display: grid; grid-template-columns: 1fr 320px; gap: 20px; margin-top:20px;">
-      <div class="table-card">
-        <table class="tbl">
-          <thead><tr><th style="width:40px">ID</th><th>Unit</th><th>Deadline</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-      <div class="table-card" style="padding:15px; background:#f8fafc;">
-        <h4 style="margin:0 0 10px 0;">Bulk ID Import</h4>
-        <p style="font-size:11px; color:#666; margin-bottom:10px;">Format: ID - Date (e.g. 1 - 25 Dec)</p>
-        <textarea id="bulk-id-input" style="width:100%; height:250px; padding:10px; font-size:12px;"></textarea>
-        <button class="btn-save" style="width:100%; margin-top:10px;" onclick="applyIDBulkImport(${cTT})">Process & Sync</button>
-      </div>
-    </div>`;
+  const l = DB.learners[cTT];
+  if(!l) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  const rows = l.timetable.map((t, i) => `<tr><td style="text-align:center; font-weight:bold; color:var(--ink3);">${i + 1}</td><td style="width:45%"><div style="font-weight:600;">${t.label}</div><div style="font-size:11px; color:var(--ink3); white-space:pre-line;">${t.reqs||''}</div></td><td><input type="text" class="tt-edit-input" style="width:100%" value="${t.date||''}" onchange="DB.learners[${cTT}].timetable[${i}].date=this.value;save();" placeholder="Set Date..."></td></tr>`).join('');
+  el.innerHTML = `<div class="page-header"><div class="page-title">Timetable</div></div><div class="learner-bar" id="tt-btns"></div><div style="display:grid; grid-template-columns:1fr 320px; gap:20px; margin-top:20px;"><div class="table-card"><table class="tbl"><thead><tr><th style="width:40px">ID</th><th>Unit</th><th>Deadline</th></tr></thead><tbody>${rows}</tbody></table></div><div class="table-card" style="padding:20px;"><h3 style="font-family:'Fraunces',serif; margin-bottom:10px;">Bulk ID Import</h3><textarea id="bulk-id-input" rows="12" style="width:100%; padding:12px; border:1.5px solid var(--border); border-radius:10px; font-size:13px;"></textarea><button class="btn-save" style="width:100%; margin-top:15px;" onclick="applyIDBulkImport(${cTT})">Sync Dates</button></div></div>`;
   learnerBar('tt-btns', cTT, 'selectTT');
 }
 
-function updateTTDate(li, index, val) {
-  if (!DB.learners[li].timetable[index]) return;
-  DB.learners[li].timetable[index].date = val;
-  save();
+function renderCourses() {
+  const el = document.getElementById('tab-courses');
+  const type = currentCourseView;
+  const list = type === 'dip' ? DIPLOMA_ACS : OHE_ACS_NEW;
+  const rows = list.map((ac, i) => `
+    <tr class="draggable-row" draggable="true" data-index="${i}" 
+        ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" 
+        ondrop="handleDrop(event, '${type}')" ondragend="handleDragEnd(event)">
+      <td class="drag-handle">⋮⋮</td>
+      <td><input type="text" class="tt-edit-input" style="width:65px" value="${ac.unit||''}" oninput="updateTemplate('${type}',${i},'unit',this.value)" onblur="saveTemplates()"></td>
+      <td><input type="text" class="tt-edit-input" style="width:100%" value="${ac.ref||''}" oninput="updateTemplate('${type}',${i},'ref',this.value)" onblur="saveTemplates()"></td>
+      <td><input type="number" class="tt-edit-input" style="width:50px" value="${ac.n||1}" oninput="updateTemplate('${type}',${i},'n',this.value)" onblur="saveTemplates()"></td>
+      <td><button onclick="deleteMasterAC('${type}',${i})" style="color:var(--red); border:none; background:none; cursor:pointer;">✕</button></td>
+    </tr>`).join('');
+  el.innerHTML = `<div class="page-header"><div class="page-title">Course Templates</div></div><div class="table-card" style="padding:20px;"><div style="margin-bottom:20px; display:flex; gap:10px;"><button class="lpill ${type==='dip'?'active':''}" onclick="currentCourseView='dip';renderCourses()">Diploma</button><button class="lpill ${type==='ohe'?'active':''}" onclick="currentCourseView='ohe';renderCourses()">OHE</button></div><table class="tbl"><thead><tr><th style="width:30px"></th><th>Unit</th><th>Ref</th><th>Qty</th><th></th></tr></thead><tbody id="course-template-body">${rows}</tbody></table><button class="btn-save" style="margin-top:20px;" onclick="addMasterAC('${type}')">+ Add Requirement</button></div>`;
+}
+
+// ── TEMPLATE & LEARNER MANAGEMENT ───────────────────────
+function saveTemplates() {
+  database.ref('courses').set({ diploma: DIPLOMA_ACS, ohe: OHE_ACS_NEW })
+    .then(() => {
+      DB.learners.forEach(l => syncLearnerToMaster(l));
+      return save();
+    })
+    .then(() => {
+      renderCourses();
+    });
+}
+
+function updateTemplate(t, i, f, v) { 
+  const arr = (t==='dip'?DIPLOMA_ACS:OHE_ACS_NEW);
+  if(arr[i]) arr[i][f] = f==='n' ? parseInt(v) : v; 
+}
+function addMasterAC(t) { (t==='dip'?DIPLOMA_ACS:OHE_ACS_NEW).push({unit:'',ref:'New',n:1}); renderCourses(); }
+function deleteMasterAC(t,i) { if(confirm("Delete?")){ (t==='dip'?DIPLOMA_ACS:OHE_ACS_NEW).splice(i,1); saveTemplates(); } }
+
+function renderEdit() {
+  const el = document.getElementById('tab-edit');
+  if(!DB.learners.length) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  el.innerHTML = `<div class="page-header"><div class="page-title">Manage Learners</div></div><div style="max-width:850px;">
+    ${DB.learners.map((l, i) => `
+      <div class="table-card" style="padding:20px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+        <div><b>${l.name}</b><br><small>${l.cohort} (${l.type.toUpperCase()})</small></div>
+        <button class="lpill" onclick="deleteLearner(${i})" style="color:var(--red); border-color:var(--red);">Delete</button>
+      </div>`).join('')}</div>`;
+}
+
+function deleteLearner(i) { if(confirm("Delete Profile?")) { DB.learners.splice(i,1); save().then(() => renderEdit()); } }
+
+// ── DRAG & DROP HANDLERS ───────────────────────
+function handleDragStart(e) { draggedItemIndex = e.target.closest('tr').dataset.index; e.target.closest('tr').classList.add('dragging'); }
+function handleDragOver(e) { 
+  e.preventDefault(); 
+  if (e.clientY < 100) window.scrollBy(0, -10);
+  else if (window.innerHeight - e.clientY < 100) window.scrollBy(0, 10);
+}
+function handleDrop(e, type) {
+  e.preventDefault();
+  const targetRow = e.target.closest('tr');
+  if (!targetRow || draggedItemIndex === null) return;
+  const targetIndex = parseInt(targetRow.dataset.index);
+  const list = type === 'dip' ? DIPLOMA_ACS : OHE_ACS_NEW;
+  const movedItem = list.splice(draggedItemIndex, 1)[0];
+  list.splice(targetIndex, 0, movedItem);
+  saveTemplates(); 
+}
+function handleDragEnd(e) { 
+  const row = e.target.closest('tr');
+  if(row) row.classList.remove('dragging'); 
+  draggedItemIndex = null; 
 }
 
 function applyIDBulkImport(li) {
   const input = document.getElementById('bulk-id-input').value.trim();
   if (!input) return;
-  const lines = input.split('\n');
-  let count = 0;
-  lines.forEach(line => {
+  input.split('\n').forEach(line => {
     const match = line.match(/^(\d+)[\s\-:]+(.*)$/);
-    if (match) {
-      const idx = parseInt(match[1]) - 1;
-      if (DB.learners[li].timetable[idx]) {
-        DB.learners[li].timetable[idx].date = match[2].trim();
-        count++;
-      }
-    }
+    if (match && DB.learners[li].timetable[match[1]-1]) DB.learners[li].timetable[match[1]-1].date = match[2].trim();
   });
-  if(count > 0) { save(); renderTimetable(); alert(`Synced ${count} dates.`); }
+  save().then(() => renderTimetable());
 }
 
-function selectTT(i) { cTT = i; renderTimetable(); }
+function selectDash(i){ cDash=i; renderDashboard(); }
+function selectMark(i){ cMark=i; renderMarking(); }
+function selectTT(i){ cTT=i; renderTimetable(); }
 
-// ── LEARNER MANAGEMENT & EDIT ───────────────────────
-
-function addLearner() {
-  const name = document.getElementById('add-name').value.trim();
-  const cohort = document.getElementById('add-cohort').value.trim();
-  const type = document.getElementById('add-type').value;
-  const start = document.getElementById('add-start').value;
-  const end = document.getElementById('add-end').value;
-  
-  if(!name) { alert("Please enter a name"); return; }
-  const al = type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
-  const tl = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-  
-  const newLearner = {
-    id: name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
-    name, cohort, type, start, end,
-    timetable: tl.map(t => ({ label: t.label, reqs: t.reqs || '', date: '' })),
-    progress: al.map(() => 'Not started'),
-    acs: al.map(ac => ({...ac}))
-  };
-
-  DB.learners.push(newLearner);
-  save();
-  document.getElementById('add-name').value = '';
-  renderDashboard();
-}
-
-function renderEdit() {
-  const el = document.getElementById('tab-edit');
-  if (!DB.learners.length) { el.innerHTML = '<div class="empty">No learners to manage.</div>'; return; }
-
-  el.innerHTML = `
-    <div class="page-header"><div class="page-title">Manage Learners</div></div>
-    <div style="max-width: 850px;">
-    ${DB.learners.map((l, i) => {
-      
-      const sortedIndices = l.acs.map((_, index) => index).sort((a, b) => {
-        const acA = l.acs[a]; const acB = l.acs[b];
-        const unitA = parseInt(acA.unit) || 0; const unitB = parseInt(acB.unit) || 0;
-        if (unitA !== unitB) return unitA - unitB;
-        return acA.ref.localeCompare(acB.ref, undefined, { numeric: true });
-      });
-
-      const acRows = sortedIndices.map((acIdx) => {
-        const ac = l.acs[acIdx];
-        const currStatus = l.progress[acIdx] || 'Not started';
-        const opts = STATUSES.map(s => `<option value="${s}" ${s === currStatus ? 'selected' : ''}>${s}</option>`).join('');
-        return `
-          <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding:8px 4px;"><input type="text" id="edit-unit-${i}-${acIdx}" value="${ac.unit}" style="width:55px; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;"><input type="text" id="edit-ref-${i}-${acIdx}" value="${ac.ref}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;"><input type="number" id="edit-qty-${i}-${acIdx}" value="${ac.n || 1}" style="width:45px; padding:6px; border:1px solid #cbd5e1; border-radius:4px;"></td>
-            <td style="padding:8px 4px;"><select id="edit-status-${i}-${acIdx}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">${opts}</select></td>
-            <td style="padding:8px 4px; text-align:center;"><button onclick="removeACRow(${i}, ${acIdx})" style="color:#dc2626; background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px;">✕</button></td>
-          </tr>`;
-      }).join('');
-
-      return `
-      <div class="table-card" style="padding:20px; margin-bottom:20px; border-left: 5px solid #64748b;">
-        <div id="view-mode-${i}" style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <div style="font-weight:700; font-size:1.1rem; color:var(--ink);">${l.name}</div>
-            <div style="font-size:0.85rem; color:#64748b;">${l.cohort} • ${l.type.toUpperCase()}</div>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <button class="btn-save" onclick="toggleEditForm(${i}, true)" style="background:#e2e8f0; color:#475569; border:none;">Edit Details & ACs</button>
-            <button class="btn-red" onclick="deleteLearner(${i})" style="background:#fee2e2; color:#dc2626; border:1px solid #fecaca; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer;">Delete</button>
-          </div>
-        </div>
-
-        <div id="edit-mode-${i}" style="display:none; flex-direction:column; gap:15px;">
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-             <div>
-               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">FULL NAME</label>
-               <input type="text" id="edit-name-${i}" value="${l.name}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
-             </div>
-             <div>
-               <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">COHORT / GROUP</label>
-               <input type="text" id="edit-cohort-${i}" value="${l.cohort}" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:4px;">
-             </div>
-          </div>
-          
-          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-            <div style="padding:10px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-               <span style="font-size:12px; font-weight:800; color:#475569;">UNIT CRITERIA (ACs)</span>
-               <button onclick="addACRow(${i})" style="font-size:11px; padding:5px 10px; cursor:pointer; background:#fff; border:1px solid #cbd5e1; border-radius:4px;">+ Add New Unit</button>
-            </div>
-            <table style="width:100%; border-collapse:collapse; background:#fff;">
-              <thead style="background:#f1f5f9; font-size:11px; text-align:left; color:#64748b;">
-                <tr>
-                  <th style="padding:10px;">UNIT</th>
-                  <th style="padding:10px;">REFERENCE / DESCRIPTION</th>
-                  <th style="padding:10px;">QTY</th>
-                  <th style="padding:10px;">STATUS</th>
-                  <th style="width:40px;"></th>
-                </tr>
-              </thead>
-              <tbody>${acRows}</tbody>
-            </table>
-          </div>
-
-          <div style="display:flex; gap:10px; padding-top:15px; border-top:1px solid #eee; margin-top:5px;">
-            <button class="btn-save" onclick="updateLearner(${i})" style="border:none;">Save Changes</button>
-            <button class="btn-save" style="background:#f1f5f9; color:#64748b; border:none;" onclick="toggleEditForm(${i}, false)">Cancel</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('')}
-    </div>`;
-}
-
-function updateLearner(i) {
-  DB.learners[i].name = document.getElementById(`edit-name-${i}`).value;
-  DB.learners[i].cohort = document.getElementById(`edit-cohort-${i}`).value;
-  DB.learners[i].acs.forEach((ac, acIdx) => {
-    DB.learners[i].acs[acIdx].unit = document.getElementById(`edit-unit-${i}-${acIdx}`).value;
-    DB.learners[i].acs[acIdx].ref = document.getElementById(`edit-ref-${i}-${acIdx}`).value;
-    DB.learners[i].acs[acIdx].n = parseInt(document.getElementById(`edit-qty-${i}-${acIdx}`).value) || 1;
-    DB.learners[i].progress[acIdx] = document.getElementById(`edit-status-${i}-${acIdx}`).value;
-  });
-  save(); renderEdit(); renderDashboard();
-}
-
-function toggleEditForm(i, edit) {
-  document.getElementById(`view-mode-${i}`).style.display = edit ? 'none' : 'flex';
-  document.getElementById(`edit-mode-${i}`).style.display = edit ? 'flex' : 'none';
-}
-
-function deleteLearner(index) {
-  if(confirm("Are you sure?")) { DB.learners.splice(index, 1); save(); renderDashboard(); renderEdit(); }
-}
-
-function addACRow(li) {
-  DB.learners[li].acs.push({ unit: '', ref: '', n: 1 });
-  DB.learners[li].progress.push('Not started');
-  renderEdit();
-}
-
-function removeACRow(li, aci) {
-  DB.learners[li].acs.splice(aci, 1);
-  DB.learners[li].progress.splice(aci, 1);
-  renderEdit();
-}
-
-window.onload = () => { initialFirebaseLoad(); };
+window.onload = initialFirebaseLoad;
