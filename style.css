@@ -379,3 +379,23 @@ select:focus{outline:none;border-color:var(--teal)}
   .form-grid{grid-template-columns:1fr}
   .shell{flex-direction:column}
 }
+
+/* Drag and Drop Styling */
+.draggable-row {
+  cursor: default;
+}
+.drag-handle {
+  cursor: grab;
+  color: var(--ink3);
+  padding: 0 10px;
+  font-size: 18px;
+  user-select: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.draggable-row.dragging {
+  opacity: 0.4;
+  background: var(--cream2);
+  border: 1px dashed var(--teal);
+}
