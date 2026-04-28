@@ -1,3 +1,4 @@
+
 // ── FIREBASE INITIALIZATION ───────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBxEVBFLgPs_vkLya-zZ0bWunJoiLDGKI8",
@@ -62,25 +63,39 @@ function syncLearnerToMaster(learner) {
 }
 
 function initialFirebaseLoad() {
-  database.ref('courses').once('value').then(cS => {
-    const d = cS.val();
-    if (d) { DIPLOMA_ACS = d.diploma || []; OHE_ACS_NEW = d.ohe || []; }
+  // 1. Fetch Marking Templates from the nested path: all_courses > courses
+  // This contains 'diploma' and 'ohe'
+  database.ref('all_courses/courses').once('value').then(snap => {
+    const d = snap.val() || {};
+    console.log("Marking Templates Loaded from all_courses/courses:", d);
+    
+    // Mapping using the exact keys 'diploma' and 'ohe' from your screenshot
+    DIPLOMA_ACS = d.diploma || [];
+    OHE_ACS_NEW = d.ohe || [];
+
+    // 2. Fetch Timetables from the 'courses' root folder
+    // This contains 'dip_tt' and 'ohe_tt'
+    return database.ref('courses').once('value');
+  }).then(snap => {
+    const d = snap.val() || {};
+    console.log("Timetables Loaded from courses:", d);
+    DIPLOMA_TT_MASTER = d.dip_tt || [];
+    OHE_TT_MASTER = d.ohe_tt || [];
+
+    // 3. Fetch Learners from 'backups/latest_sync'
     return database.ref('backups/latest_sync').once('value');
   }).then(lS => {
     const lData = lS.val();
-    if (lData && lData.learners) { 
-      DB = lData; 
-      DB.learners.forEach(l => {
-        if(!l.timetable || l.timetable.length === 0) {
-            const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-            l.timetable = tl.map(t => ({ label: t.label, reqs: t.reqs, date: '' }));
-        }
-        syncLearnerToMaster(l);
-      });
+    if (lData) {
+      DB = lData;
+      if (!DB.learners) DB.learners = [];
+      DB.learners.forEach(l => syncLearnerToMaster(l));
     }
     renderDashboard();
-  }).catch(err => console.error("Init Error:", err));
+    renderCourses();
+  }).catch(err => console.error("Firebase Load Error:", err));
 }
+
 
 // ── UI HELPERS ───────────────────────
 function isMarkedThisWeek(ts) { return ts > (Date.now() - (7 * 24 * 60 * 60 * 1000)); }
