@@ -536,7 +536,7 @@ function exportPDF(idx) {
 
   const ttRows = l.timetable.map((t, i) => {
     const d = parseDate(t.date);
-    const status = d ? (d <= today ? 'Passed' : 'Upcoming') : '–';
+    const status = d ? (d <= today ? 'Complete' : 'Not Complete') : '–';
     return [String(i + 1), t.label, t.date || '–', status];
   });
   doc.autoTable({
@@ -548,7 +548,7 @@ function exportPDF(idx) {
     columnStyles: { 0: { cellWidth: 10 }, 2: { cellWidth: 30 }, 3: { cellWidth: 24 } },
     alternateRowStyles: { fillColor: [250, 249, 247] },
     didParseCell: d => {
-      if (d.column.index === 3 && d.section === 'body' && d.cell.raw === 'Passed') d.cell.styles.textColor = TEAL;
+      if (d.column.index === 3 && d.section === 'body' && d.cell.raw === 'Complete') d.cell.styles.textColor = TEAL;
     },
     margin: { left: 20, right: 20 }
   });
