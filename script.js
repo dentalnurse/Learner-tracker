@@ -105,6 +105,27 @@ function getMarkingHistory(l) {
   return weeks;
 }
 
+function unitKeyFromLabel(label) {
+  const m = label.match(/(?:unit\s+|–\s*)(\d+[a-c]?)\b/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+function getTimetableStatus(l, ttIndex) {
+  const label = (l.timetable[ttIndex] || {}).label || '';
+  const key = unitKeyFromLabel(label);
+  if (!key) return null;
+  const indices = l.acs.reduce((acc, ac, i) => {
+    if (String(ac.unit).toLowerCase() === key) acc.push(i);
+    return acc;
+  }, []);
+  if (!indices.length) return null;
+  const done = indices.filter(i => l.progress[i] === 'Completed').length;
+  const amend = indices.filter(i => l.progress[i] === 'Requires amendments').length;
+  if (done === indices.length) return 'Complete';
+  if (done > 0 || amend > 0) return 'In Progress';
+  return 'Not Complete';
+}
+
 function calculateOnTrack(l) {
   const today = new Date(); today.setHours(0,0,0,0);
   const withDates = l.timetable.filter(t => t.date && t.date.trim());
@@ -677,8 +698,7 @@ function exportPDF(idx) {
   doc.text('Timetable', 20, y); y += 4;
 
   const ttRows = l.timetable.map((t, i) => {
-    const d = parseDate(t.date);
-    const status = d ? (d <= today ? 'Complete' : 'Not Complete') : '–';
+    const status = getTimetableStatus(l, i) || 'Not Complete';
     return [String(i + 1), t.label, t.date || '–', status];
   });
   doc.autoTable({
@@ -690,7 +710,10 @@ function exportPDF(idx) {
     columnStyles: { 0: { cellWidth: 10 }, 2: { cellWidth: 30 }, 3: { cellWidth: 24 } },
     alternateRowStyles: { fillColor: [250, 249, 247] },
     didParseCell: d => {
-      if (d.column.index === 3 && d.section === 'body' && d.cell.raw === 'Complete') d.cell.styles.textColor = TEAL;
+      if (d.column.index === 3 && d.section === 'body') {
+        if (d.cell.raw === 'Complete') d.cell.styles.textColor = TEAL;
+        else if (d.cell.raw === 'In Progress') d.cell.styles.textColor = [180, 120, 0];
+      }
     },
     margin: { left: 20, right: 20 }
   });
