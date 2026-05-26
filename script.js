@@ -45,6 +45,45 @@ function parseDate(str) {
   return null;
 }
 
+function getWeekStart(date) {
+  const d = date ? new Date(date) : new Date();
+  d.setHours(0,0,0,0);
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d.toISOString().slice(0,10);
+}
+
+function recordMarking(learnerIdx, type) {
+  const l = DB.learners[learnerIdx];
+  if (!l.markingLog) l.markingLog = [];
+  const week = getWeekStart();
+  l.markingLog = l.markingLog.filter(e => e.week !== week);
+  l.markingLog.push({ week, type });
+  l.markingLog.sort((a,b) => a.week.localeCompare(b.week));
+}
+
+function getMarkingHistory(l) {
+  const log = {};
+  (l.markingLog || []).forEach(e => log[e.week] = e.type);
+
+  const ttDates = (l.timetable||[]).map(t=>parseDate(t.date)).filter(Boolean);
+  const logDates = (l.markingLog||[]).map(e=>new Date(e.week));
+  const allDates = [...ttDates, ...logDates];
+  if (!allDates.length) return [];
+
+  const earliest = new Date(Math.min(...allDates.map(d=>d.getTime())));
+  const lastWeek = getWeekStart(new Date(Date.now() - 7*24*60*60*1000));
+
+  const weeks = [];
+  const d = new Date(getWeekStart(earliest));
+  while (d.toISOString().slice(0,10) <= lastWeek) {
+    const weekStr = d.toISOString().slice(0,10);
+    weeks.push({ week: weekStr, type: log[weekStr] || 'missed' });
+    d.setDate(d.getDate() + 7);
+  }
+  return weeks;
+}
+
 function calculateOnTrack(l) {
   const today = new Date(); today.setHours(0,0,0,0);
   const withDates = l.timetable.filter(t => t.date && t.date.trim());
@@ -154,6 +193,29 @@ function renderDashboard() {
   const onTrackChip = `<span class="risk-chip ${trackCls}" style="${!onTrack?'background:var(--cream2);color:var(--ink3)':''}">${trackText}</span>`;
   const pbColor = pct >= 75 ? '' : pct >= 40 ? 'amber' : 'red';
 
+  const history = getMarkingHistory(l);
+  const missed = history.filter(h => h.type === 'missed');
+  const historyHtml = history.length ? `
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Marking History</div>
+        ${missed.length ? `<span class="risk-chip risk-at">${missed.length} missed week${missed.length!==1?'s':''}</span>` : '<span class="risk-chip risk-on">No missed weeks</span>'}
+      </div>
+      <div class="marking-dots">
+        ${history.map(h => {
+          const label = new Date(h.week).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+          const title = `w/c ${label} — ${h.type==='marked'?'Marked':h.type==='nothing'?'Nothing to submit':'Missed'}`;
+          return `<div class="mw-dot mw-${h.type}" title="${title}"><div class="mw-dot-inner"></div><div class="mw-dot-label">${label}</div></div>`;
+        }).join('')}
+      </div>
+      ${missed.length ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--cream2);">
+        <div style="font-size:11px;font-weight:500;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Missed weeks</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${missed.map(h=>`<span class="sbdg s-amend">w/c ${new Date(h.week).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</span>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>` : '';
+
   const ptHtml = l.type === 'ohe' ? (() => {
     const pts = l.patientTypes || {};
     const count = Object.values(pts).filter(Boolean).length;
@@ -193,6 +255,7 @@ function renderDashboard() {
       <div class="stat-card"><div class="stat-label">Schedule</div><div class="stat-value" style="font-size:${onTrack?'17px':'13px'};margin-top:${onTrack?'6px':'10px'};color:${onTrack==='on-track'?'var(--teal)':onTrack==='watch'?'var(--amber)':onTrack==='at-risk'?'var(--red)':'var(--ink3)'}">${trackText}</div><div class="stat-sub">vs timetable</div></div>
     </div>
     ${ptHtml}
+    ${historyHtml}
     <div class="table-card"><table class="tbl"><thead><tr><th>Unit</th><th>Ref</th><th style="text-align:center">Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   learnerBar('dash-btns', cDash, 'selectDash');
 }
@@ -241,8 +304,23 @@ function togglePatientType(learnerIdx, key) {
   DB.learners[learnerIdx].patientTypes[key] = !DB.learners[learnerIdx].patientTypes[key];
   save().then(() => renderMarking());
 }
-function updateMarking(idx, val) { DB.learners[cMark].progress[idx]=val; DB.learners[cMark].lastMarked=Date.now(); save().then(()=>renderMarking()); }
-function markNothingToSubmit(i) { DB.learners[i].lastMarked = isMarkedThisWeek(DB.learners[i].lastMarked) ? 0 : Date.now(); save().then(()=>renderMarking()); }
+function updateMarking(idx, val) {
+  DB.learners[cMark].progress[idx] = val;
+  DB.learners[cMark].lastMarked = Date.now();
+  recordMarking(cMark, 'marked');
+  save().then(() => renderMarking());
+}
+function markNothingToSubmit(i) {
+  if (isMarkedThisWeek(DB.learners[i].lastMarked)) {
+    DB.learners[i].lastMarked = 0;
+    const week = getWeekStart();
+    if (DB.learners[i].markingLog) DB.learners[i].markingLog = DB.learners[i].markingLog.filter(e => e.week !== week);
+  } else {
+    DB.learners[i].lastMarked = Date.now();
+    recordMarking(i, 'nothing');
+  }
+  save().then(() => renderMarking());
+}
 
 function renderTimetable() {
   const el = document.getElementById('tab-timetable');

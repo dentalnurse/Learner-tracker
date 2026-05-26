@@ -478,3 +478,34 @@ select:focus{outline:none;border-color:var(--teal)}
 @media(max-width:700px) {
   .pt-grid, .pt-grid-display { grid-template-columns: 1fr; }
 }
+
+/* ── MARKING HISTORY ────────────────────────────── */
+.marking-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+.mw-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+.mw-dot-inner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transition: transform .15s;
+}
+.mw-dot:hover .mw-dot-inner { transform: scale(1.3); }
+.mw-dot-label {
+  font-size: 9px;
+  color: var(--ink3);
+  white-space: nowrap;
+  line-height: 1;
+}
+.mw-marked  .mw-dot-inner { background: var(--teal); }
+.mw-nothing .mw-dot-inner { background: var(--blue); opacity: .6; }
+.mw-missed  .mw-dot-inner { background: var(--red); }
