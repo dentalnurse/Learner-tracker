@@ -566,3 +566,33 @@ select:focus{outline:none;border-color:var(--teal)}
 .mw-marked  .mw-dot-inner { background: var(--teal); }
 .mw-nothing .mw-dot-inner { background: var(--blue); opacity: .6; }
 .mw-missed  .mw-dot-inner { background: var(--red); }
+.mw-edit-popup {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1.5px solid var(--cream2);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  z-index: 200;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: nowrap;
+}
+.mw-edit-popup button {
+  background: var(--cream);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background .15s;
+}
+.mw-edit-popup button:hover { background: var(--cream2); }

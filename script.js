@@ -83,6 +83,40 @@ function recordMarking(learnerIdx, type) {
   l.markingLog.sort((a,b) => a.week.localeCompare(b.week));
 }
 
+function editMarkingWeek(learnerIdx, week, event) {
+  event.stopPropagation();
+  document.querySelectorAll('.mw-edit-popup').forEach(p => p.remove());
+
+  const label = new Date(week).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  const popup = document.createElement('div');
+  popup.className = 'mw-edit-popup';
+  popup.innerHTML = `
+    <div style="font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:8px;">w/c ${label}</div>
+    <button onclick="setMarkingWeek(${learnerIdx},'${week}','marked')">✓ Marked</button>
+    <button onclick="setMarkingWeek(${learnerIdx},'${week}','nothing')">– Nothing to submit</button>
+    <button onclick="setMarkingWeek(${learnerIdx},'${week}','missed')">✗ Missed</button>
+  `;
+
+  const dot = event.currentTarget;
+  dot.style.position = 'relative';
+  dot.appendChild(popup);
+
+  const close = e => { if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+
+function setMarkingWeek(learnerIdx, week, type) {
+  document.querySelectorAll('.mw-edit-popup').forEach(p => p.remove());
+  const l = DB.learners[learnerIdx];
+  if (!l.markingLog) l.markingLog = [];
+  l.markingLog = l.markingLog.filter(e => e.week !== week);
+  if (type !== 'missed') {
+    l.markingLog.push({ week, type });
+    l.markingLog.sort((a,b) => a.week.localeCompare(b.week));
+  }
+  save().then(() => renderDashboard());
+}
+
 function getMarkingHistory(l) {
   const log = {};
   (l.markingLog || []).forEach(e => log[e.week] = e.type);
@@ -278,7 +312,7 @@ function renderDashboard() {
         ${history.map(h => {
           const label = new Date(h.week).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
           const title = `w/c ${label} — ${h.type==='marked'?'Marked':h.type==='nothing'?'Nothing to submit':'Missed'}`;
-          return `<div class="mw-dot mw-${h.type}" title="${title}"><div class="mw-dot-inner"></div><div class="mw-dot-label">${label}</div></div>`;
+          return `<div class="mw-dot mw-${h.type}" title="${title}" style="cursor:pointer" onclick="editMarkingWeek(${cDash},'${h.week}',event)"><div class="mw-dot-inner"></div><div class="mw-dot-label">${label}</div></div>`;
         }).join('')}
       </div>
       ${missed.length ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--cream2);">
