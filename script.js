@@ -22,6 +22,27 @@ let DIPLOMA_ACS = [], OHE_ACS_NEW = [];
 let draggedItemIndex = null;
 const STATUSES = ['Not started', 'Requires amendments', 'Completed'];
 
+const DIPLOMA_PDP_UNITS = [
+  { key:'u1',  label:'Unit 1 – Professional Practice' },
+  { key:'u2',  label:'Unit 2 – Leading & Teamworking' },
+  { key:'u3',  label:'Unit 3 – Communication' },
+  { key:'u4',  label:'Unit 4 – Inclusive Practice' },
+  { key:'u5',  label:'Unit 5 – Clinical Assessment, Radiography & Periodontology' },
+  { key:'u6',  label:'Unit 6 – Restorative & Prosthetic' },
+  { key:'u7',  label:'Unit 7 – Oral Health' },
+  { key:'u8',  label:'Unit 8 – Health & Wellbeing' },
+  { key:'u9',  label:'Unit 9 – CPD' },
+  { key:'u10', label:'Unit 10 – Risks & Medical Emergencies' },
+];
+const OHE_PDP_UNITS = [
+  { key:'p1', label:'Phase 1 – Theory' },
+  { key:'p2', label:'Phase 2 – PCAs 1–3' },
+  { key:'p3', label:'Phase 3 – PCAs 4–6' },
+  { key:'p4', label:'Phase 4 – PCAs 7–9' },
+  { key:'p5', label:'Phase 5 – PCAs 10–11' },
+  { key:'p6', label:'Phase 6 – SOs' },
+];
+
 const OHE_PATIENT_TYPES = [
   { key: 'adolescent',    label: 'Adolescent (12–15)' },
   { key: 'adult',         label: 'Adult Patient (16–64)' },
@@ -152,6 +173,7 @@ function initialFirebaseLoad() {
         if (l.type === 'ohe' && !l.patientTypes) {
           l.patientTypes = { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false };
         }
+        if (!l.pdp) l.pdp = {};
         syncLearnerToMaster(l);
       });
     }
@@ -192,6 +214,28 @@ function renderDashboard() {
   const [trackText, trackCls] = onTrack ? trackLabels[onTrack] : ['No dates set', ''];
   const onTrackChip = `<span class="risk-chip ${trackCls}" style="${!onTrack?'background:var(--cream2);color:var(--ink3)':''}">${trackText}</span>`;
   const pbColor = pct >= 75 ? '' : pct >= 40 ? 'amber' : 'red';
+
+  const pdpUnitsDash = l.type === 'ohe' ? OHE_PDP_UNITS : DIPLOMA_PDP_UNITS;
+  const pdpDash = l.pdp || {};
+  const pdpDoneDash = pdpUnitsDash.filter(u => pdpDash[u.key]?.pdp).length;
+  const refDoneDash = pdpUnitsDash.filter(u => pdpDash[u.key]?.reflection).length;
+  const pdpDashHtml = `<div class="table-card" style="margin-bottom:16px;">
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
+      <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDoneDash}/${pdpUnitsDash.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDoneDash}/${pdpUnitsDash.length}</strong></div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Unit</th><th style="text-align:center;width:90px">PDP</th><th style="text-align:center;width:90px">Reflection</th></tr></thead>
+      <tbody>${pdpUnitsDash.map(u => {
+        const e = pdpDash[u.key] || {};
+        return `<tr>
+          <td style="font-size:12.5px">${u.label}</td>
+          <td style="text-align:center"><span class="pdp-dot ${e.pdp?'pdp-done':'pdp-open'}">${e.pdp?'✓':''}</span></td>
+          <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
 
   const history = getMarkingHistory(l);
   const missed = history.filter(h => h.type === 'missed');
@@ -255,6 +299,7 @@ function renderDashboard() {
       <div class="stat-card"><div class="stat-label">Schedule</div><div class="stat-value" style="font-size:${onTrack?'17px':'13px'};margin-top:${onTrack?'6px':'10px'};color:${onTrack==='on-track'?'var(--teal)':onTrack==='watch'?'var(--amber)':onTrack==='at-risk'?'var(--red)':'var(--ink3)'}">${trackText}</div><div class="stat-sub">vs timetable</div></div>
     </div>
     ${ptHtml}
+    ${pdpDashHtml}
     ${historyHtml}
     <div class="table-card"><table class="tbl"><thead><tr><th>Unit</th><th>Ref</th><th style="text-align:center">Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   learnerBar('dash-btns', cDash, 'selectDash');
@@ -288,6 +333,28 @@ function renderMarking() {
     </div>`;
   })() : '';
 
+  const pdpUnits = l.type === 'ohe' ? OHE_PDP_UNITS : DIPLOMA_PDP_UNITS;
+  const pdp = l.pdp || {};
+  const pdpDone = pdpUnits.filter(u => pdp[u.key]?.pdp).length;
+  const refDone = pdpUnits.filter(u => pdp[u.key]?.reflection).length;
+  const pdpHtml = `<div class="table-card" style="margin-top:16px;">
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
+      <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDone}/${pdpUnits.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDone}/${pdpUnits.length}</strong></div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Unit</th><th style="text-align:center;width:110px">PDP</th><th style="text-align:center;width:110px">Reflection</th></tr></thead>
+      <tbody>${pdpUnits.map(u => {
+        const entry = pdp[u.key] || {};
+        return `<tr>
+          <td style="font-size:12.5px">${u.label}</td>
+          <td style="text-align:center"><label class="pdp-check ${entry.pdp?'checked':''}"><input type="checkbox" ${entry.pdp?'checked':''} onchange="togglePDP(${cMark},'${u.key}','pdp')"><span>${entry.pdp?'✓ Done':'○'}</span></label></td>
+          <td style="text-align:center"><label class="pdp-check ${entry.reflection?'checked':''}"><input type="checkbox" ${entry.reflection?'checked':''} onchange="togglePDP(${cMark},'${u.key}','reflection')"><span>${entry.reflection?'✓ Done':'○'}</span></label></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+
   el.innerHTML = `<div class="page-header"><div class="page-title">Weekly Marking</div></div><div class="learner-bar" id="mark-btns"></div>
     <div class="table-card" style="padding:20px; border-left:5px solid ${isDone?'var(--teal)':'var(--amber)'}">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -296,8 +363,16 @@ function renderMarking() {
       </div>
       <table class="tbl"><tbody>${rows}</tbody></table>
     </div>
+    ${pdpHtml}
     ${ptHtml}`;
   learnerBar('mark-btns', cMark, 'selectMark');
+}
+function togglePDP(learnerIdx, key, field) {
+  const l = DB.learners[learnerIdx];
+  if (!l.pdp) l.pdp = {};
+  if (!l.pdp[key]) l.pdp[key] = { pdp: false, reflection: false };
+  l.pdp[key][field] = !l.pdp[key][field];
+  save().then(() => renderMarking());
 }
 function togglePatientType(learnerIdx, key) {
   if (!DB.learners[learnerIdx].patientTypes) DB.learners[learnerIdx].patientTypes = {};
@@ -371,7 +446,7 @@ async function addLearner() {
   const masterLabels = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
   const timetable = masterLabels.map((m, i) => ({ label: m.label, reqs: m.reqs, date: rawDates[i] ? rawDates[i].trim() : "" }));
   const masterACS = type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
-  const newLearner = { name, cohort, type, lastMarked: 0, acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'), timetable: timetable, ...(type==='ohe'?{patientTypes:{adolescent:false,adult:false,elderly:false,pregnant:false,preSchool:false,primarySchool:false,specialNeeds:false}}:{}) };
+  const newLearner = { name, cohort, type, lastMarked: 0, acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'), timetable: timetable, pdp: {}, ...(type==='ohe'?{patientTypes:{adolescent:false,adult:false,elderly:false,pregnant:false,preSchool:false,primarySchool:false,specialNeeds:false}}:{}) };
   DB.learners.push(newLearner);
   await save();
   document.getElementById('add-msg').innerHTML = "✅ Added!";

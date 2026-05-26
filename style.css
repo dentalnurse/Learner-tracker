@@ -479,6 +479,36 @@ select:focus{outline:none;border-color:var(--teal)}
   .pt-grid, .pt-grid-display { grid-template-columns: 1fr; }
 }
 
+/* ── PDP & REFLECTIONS ──────────────────────────── */
+.pdp-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink3);
+  transition: all .15s;
+  white-space: nowrap;
+}
+.pdp-check:hover { border-color: var(--teal); color: var(--teal); }
+.pdp-check.checked { border-color: var(--teal); background: var(--teal-l); color: var(--teal2); font-weight: 500; }
+.pdp-check input[type=checkbox] { display: none; }
+
+.pdp-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pdp-done { background: var(--teal-l); color: var(--teal2); }
+.pdp-open { background: var(--cream2); color: var(--ink3); }
+
 /* ── MARKING HISTORY ────────────────────────────── */
 .marking-dots {
   display: flex;
