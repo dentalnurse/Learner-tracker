@@ -119,6 +119,8 @@ function calculateOnTrack(l) {
 
 // ── TIMETABLE MASTER LABELS ───────────────────────
 const DIPLOMA_TT_LABELS = [
+  {label:'Professional Practice – Unit 1a',reqs:'6 Knowledge evidence questions\nGDC standards, dental legislation, clinical governance'},
+  {label:'Professional Practice – Unit 1b',reqs:'Safeguarding assignment\nProfessional conduct observation (patient, colleague, learner)\n1 reflective account'},
   {label:'Professional Practice – Unit 1c',reqs:'2 Knowledge evidence questions\nMWT Decontamination'},
   {label:'CPD – Unit 9',reqs:'5 Knowledge evidence questions'},
   {label:'Leading & Teamworking – Unit 2',reqs:'Reflective account'},
@@ -166,17 +168,16 @@ function initialFirebaseLoad() {
     if (lData && lData.learners) {
       DB = lData;
       DB.learners.forEach(l => {
-        // Always merge with master labels so entries always have label/reqs/date
+        // Merge with master labels — master is the source of truth for rows
         const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-        if (!l.timetable || l.timetable.length === 0) {
-          l.timetable = tl.map(t => ({ label: t.label, reqs: t.reqs, date: '' }));
-        } else {
-          l.timetable = l.timetable.map((t, i) => ({
-            label: (t && t.label) || (tl[i] ? tl[i].label : ''),
-            reqs:  (t && t.reqs)  || (tl[i] ? tl[i].reqs  : ''),
-            date:  (t && t.date)  || (typeof t === 'string' ? t : '')
-          }));
-        }
+        l.timetable = tl.map((master, i) => {
+          const existing = l.timetable ? l.timetable[i] : null;
+          return {
+            label: master.label,
+            reqs:  master.reqs,
+            date:  (existing && existing.date) || (typeof existing === 'string' ? existing : '')
+          };
+        });
         if (l.type === 'ohe' && !l.patientTypes) {
           l.patientTypes = { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false };
         }
