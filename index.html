@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learner Progress Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+
+<nav class="sidebar">
+  <div class="brand">
+    <div class="brand-title">Progress<br>Tracker</div>
+    <div class="brand-sub">Dental Nursing</div>
+  </div>
+  <div class="nav">
+    <button class="nav-item active" onclick="switchTab('dashboard',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/>
+        <rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/>
+      </svg>
+      Dashboard
+    </button>
+    <button class="nav-item" onclick="switchTab('marking',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 8h12M2 4h8M2 12h5"/><circle cx="13" cy="12" r="2.5"/><path d="m11.5 12 1 1 2-2"/>
+      </svg>
+      Weekly marking
+    </button>
+    <button class="nav-item" onclick="switchTab('timetable',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="3" width="14" height="12" rx="2"/><path d="M5 1v4M11 1v4M1 7h14"/>
+      </svg>
+      Timetable
+    </button>
+    <button class="nav-item" onclick="switchTab('courses',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="3" width="14" height="12" rx="2"/>
+        <path d="M5 6.5h2.5a1.5 1.5 0 0 1 1.5 1.5v4a1.5 1.5 0 0 0-1.5-1.5H5z" />
+        <path d="M11 6.5H8.5a1.5 1.5 0 0 0-1.5 1.5v4a1.5 1.5 0 0 1 1.5-1.5h2.5z" />
+      </svg>
+      Courses
+    </button>
+    <button class="nav-item" onclick="switchTab('add',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="7"/><path d="M8 5v6M5 8h6"/>
+      </svg>
+      Add learner
+    </button>
+    <button class="nav-item" onclick="switchTab('edit',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M11 2l3 3-8 8H3v-3L11 2z"/>
+      </svg>
+      Edit learner
+    </button>
+  </div>
+  <div class="sidebar-foot">dentalnurse.training</div>
+</nav>
+
+<main class="main">
+  <div id="tab-dashboard" class="view active"></div>
+  <div id="tab-marking"   class="view"></div>
+  <div id="tab-timetable" class="view"></div>
+  <div id="tab-courses"   class="view"></div>
+  <div id="tab-edit"      class="view"></div>
+
+  <div id="tab-add" class="view">
+    <div class="page-header">
+      <div class="page-title">Add learner</div>
+      <div class="page-sub">Set up a new learner's profile and timetable</div>
+    </div>
+    <div class="form-card">
+      <div class="form-grid">
+        <div class="form-row full"><label>Full name</label><input id="add-name" placeholder="e.g. Sarah Jones"></div>
+        <div class="form-row full"><label>Cohort / intake</label><input id="add-cohort" placeholder="e.g. March 26 Diploma"></div>
+        <div class="form-row full"><label>Course type</label>
+          <select id="add-type">
+            <option value="diploma">Diploma in Dental Nursing</option>
+            <option value="ohe">OHE Certificate</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Start date</label><input id="add-start" type="date"></div>
+        <div class="form-row"><label>Planned end date</label><input id="add-end" type="date"></div>
+        <div class="form-row full"><label>Exam date (if known)</label><input id="add-exam" type="date"></div>
+        <div class="form-row full">
+          <label>Upload timetable (.docx)</label>
+          <div class="file-upload-zone" id="add-tt-zone" onclick="document.getElementById('add-tt-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleTTDrop(event,'add')">
+            <input type="file" id="add-tt-file" accept=".docx" onchange="parseTTDocx(this.files[0],'add')">
+            <div id="add-tt-label">📄 Click to upload or drag &amp; drop timetable .docx</div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--ink3)">Or enter dates manually below (one per line, in unit order)</div>
+          <textarea id="add-timetable" rows="4" style="margin-top:6px;width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;color:var(--ink)" placeholder="30 Mar 2026&#10;04 May 2026&#10;25 May 2026&#10;..."></textarea>
+        </div>
+      </div>
+      <div style="margin-top:20px">
+        <button class="btn-save" onclick="addLearner()">Add learner</button>
+        <div id="add-msg" class="form-msg"></div>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
