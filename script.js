@@ -402,7 +402,22 @@ function renderTimetable() {
   const l = DB.learners[cTT];
   if(!l) { el.innerHTML = '<div class="empty">No learners found.</div>'; return; }
   const rows = l.timetable.map((t, i) => `<tr><td style="text-align:center; font-weight:bold; color:var(--ink3); width:60px;">${i + 1}</td><td style="width:45%"><div style="font-weight:600;">${t.label}</div><div style="font-size:11px; color:var(--ink3); line-height:1.4;">${t.reqs||''}</div></td><td><input type="text" class="tt-edit-input" style="width:100%" value="${t.date||''}" onchange="DB.learners[${cTT}].timetable[${i}].date=this.value;save();"></td></tr>`).join('');
-  el.innerHTML = `<div class="page-header"><div class="page-title">Timetable</div></div><div class="learner-bar" id="tt-btns"></div><div class="table-card" style="margin-top:20px;"><table class="tbl"><thead><tr><th style="width:60px; text-align:center;">ID</th><th>Unit</th><th>Deadline</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  el.innerHTML = `
+    <div class="page-header"><div class="page-title">Timetable</div></div>
+    <div class="learner-bar" id="tt-btns"></div>
+    <div class="form-card" style="max-width:100%;margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:500;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Upload timetable to auto-fill dates</div>
+      <div class="file-upload-zone" id="tt-tt-zone"
+        onclick="document.getElementById('tt-tt-file').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleTTDrop(event,'tt')">
+        <input type="file" id="tt-tt-file" accept=".docx" style="display:none" onchange="parseTTDocx(this.files[0],'tt')">
+        <div id="tt-tt-label">📄 Click to upload or drag &amp; drop timetable .docx — dates will be matched to units in order</div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink3);">Dates should be in the format <strong>15 Jan 2026</strong> or <strong>15/01/2026</strong>. Existing dates will be overwritten.</div>
+    </div>
+    <div class="table-card"><table class="tbl"><thead><tr><th style="width:60px; text-align:center;">ID</th><th>Unit</th><th>Target Date</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   learnerBar('tt-btns', cTT, 'selectTT');
 }
 
@@ -451,6 +466,62 @@ async function addLearner() {
   await save();
   document.getElementById('add-msg').innerHTML = "✅ Added!";
   setTimeout(() => { switchTab('dashboard', document.querySelector('.nav-item')); }, 1000);
+}
+
+// ── TIMETABLE UPLOAD ───────────────────────
+function extractDatesFromText(text) {
+  const months = { jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec',
+    january:'Jan',february:'Feb',march:'Mar',april:'Apr',june:'Jun',july:'Jul',august:'Aug',september:'Sep',october:'Oct',november:'Nov',december:'Dec' };
+  const dates = [];
+  const re = /\b(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const mon = months[m[2].toLowerCase()];
+    dates.push(`${m[1]} ${mon} ${m[3]}`);
+  }
+  // Also handle DD/MM/YYYY
+  const re2 = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
+  const mnArr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  while ((m = re2.exec(text)) !== null) {
+    const mon = mnArr[parseInt(m[2]) - 1];
+    if (mon) dates.push(`${m[1]} ${mon} ${m[3]}`);
+  }
+  return dates;
+}
+
+function parseTTDocx(file, mode) {
+  if (!file) return;
+  const label = document.getElementById(`${mode}-tt-label`);
+  const zone  = document.getElementById(`${mode}-tt-zone`);
+  if (label) label.textContent = '⏳ Reading document…';
+  const reader = new FileReader();
+  reader.onload = e => {
+    mammoth.extractRawText({ arrayBuffer: e.target.result }).then(result => {
+      const dates = extractDatesFromText(result.value);
+      if (!dates.length) {
+        if (label) label.textContent = '⚠️ No dates found — check format and try again';
+        return;
+      }
+      if (mode === 'add') {
+        document.getElementById('add-timetable').value = dates.join('\n');
+        if (label) label.textContent = `✓ ${dates.length} dates imported — review below`;
+        if (zone)  zone.classList.add('loaded');
+      } else {
+        // Timetable tab — apply directly to the current learner
+        const l = DB.learners[cTT];
+        dates.forEach((date, i) => { if (l.timetable[i]) l.timetable[i].date = date; });
+        save().then(() => renderTimetable());
+      }
+    }).catch(() => { if (label) label.textContent = '⚠️ Could not read file'; });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleTTDrop(event, mode) {
+  event.preventDefault();
+  document.getElementById(`${mode}-tt-zone`)?.classList.remove('dragover');
+  const file = event.dataTransfer.files[0];
+  if (file) parseTTDocx(file, mode);
 }
 
 // ── DRAG & DROP ───────────────────────
