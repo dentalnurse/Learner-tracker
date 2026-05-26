@@ -477,66 +477,105 @@ function extractDatesFromText(text) {
   const months = { jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec',
     january:'Jan',february:'Feb',march:'Mar',april:'Apr',june:'Jun',july:'Jul',august:'Aug',september:'Sep',october:'Oct',november:'Nov',december:'Dec' };
   const dates = [];
+  const seen = new Set();
   const re = /\b(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})\b/gi;
   let m;
   while ((m = re.exec(text)) !== null) {
-    const mon = months[m[2].toLowerCase()];
-    dates.push(`${m[1]} ${mon} ${m[3]}`);
+    const key = `${m[1]}-${m[2]}-${m[3]}`;
+    if (!seen.has(key)) { seen.add(key); dates.push(`${m[1]} ${months[m[2].toLowerCase()]} ${m[3]}`); }
   }
-  // Also handle DD/MM/YYYY
   const re2 = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
   const mnArr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   while ((m = re2.exec(text)) !== null) {
     const mon = mnArr[parseInt(m[2]) - 1];
-    if (mon) dates.push(`${m[1]} ${mon} ${m[3]}`);
+    const key = `${m[1]}-${m[2]}-${m[3]}`;
+    if (mon && !seen.has(key)) { seen.add(key); dates.push(`${m[1]} ${mon} ${m[3]}`); }
   }
   return dates;
 }
 
-function parseTTDocx(file, mode) {
+async function readDocxText(arrayBuffer) {
+  // Read word/document.xml directly from the .docx ZIP without any library
+  const bytes = new Uint8Array(arrayBuffer);
+  const target = 'word/document.xml';
+  let offset = 0;
+  while (offset < bytes.length - 30) {
+    // Local file header signature PK\x03\x04
+    if (bytes[offset]===0x50 && bytes[offset+1]===0x4B && bytes[offset+2]===0x03 && bytes[offset+3]===0x04) {
+      const compression = bytes[offset+8] | (bytes[offset+9]<<8);
+      const compressedSize = bytes[offset+18] | (bytes[offset+19]<<8) | (bytes[offset+20]<<16) | (bytes[offset+21]<<24);
+      const nameLen  = bytes[offset+26] | (bytes[offset+27]<<8);
+      const extraLen = bytes[offset+28] | (bytes[offset+29]<<8);
+      const name = new TextDecoder().decode(bytes.slice(offset+30, offset+30+nameLen));
+      const dataStart = offset + 30 + nameLen + extraLen;
+      if (name === target) {
+        const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+        if (compression === 0) {
+          return new TextDecoder().decode(compressed);
+        } else if (compression === 8 && typeof DecompressionStream !== 'undefined') {
+          const ds = new DecompressionStream('deflate-raw');
+          const writer = ds.writable.getWriter();
+          writer.write(compressed); writer.close();
+          const reader = ds.readable.getReader();
+          const chunks = [];
+          while (true) { const {done,value} = await reader.read(); if (done) break; chunks.push(value); }
+          const out = new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));
+          let pos=0; chunks.forEach(c=>{out.set(c,pos);pos+=c.length;});
+          return new TextDecoder().decode(out);
+        }
+      }
+      offset = dataStart + (compressedSize > 0 ? compressedSize : 1);
+    } else { offset++; }
+  }
+  return null;
+}
+
+async function parseTTDocx(file, mode) {
   if (!file) return;
   const setStatus = (msg, cls) => {
     const el = document.getElementById(`${mode}-tt-status`);
-    if (el) { el.textContent = msg; el.className = `tt-upload-status ${cls||''}`; el.style.display = 'block'; }
+    if (el) { el.textContent = msg; el.className = `tt-upload-status ${cls||''}`; el.style.display='block'; }
   };
-  const zone = document.getElementById(`${mode}-tt-zone`);
   setStatus('⏳ Reading document…', '');
-  if (zone) zone.classList.add('loaded');
 
   const applyDates = dates => {
-    if (!dates.length) { setStatus('⚠️ No dates found — make sure dates are written as "15 Jan 2026" or "15/01/2026"', 'err'); if (zone) zone.classList.remove('loaded'); return; }
+    if (!dates.length) { setStatus('⚠️ No dates found. Make sure dates are written as "15 Jan 2026" or "15/01/2026"', 'err'); return; }
     if (mode === 'add') {
       document.getElementById('add-timetable').value = dates.join('\n');
       setStatus(`✓ ${dates.length} dates found — review in the box below`, 'ok');
     } else {
       const l = DB.learners[cTT];
-      dates.forEach((date, i) => { if (l.timetable[i]) l.timetable[i].date = date; });
-      setStatus(`✓ ${dates.length} dates imported`, 'ok');
-      save().then(() => renderTimetable());
+      let applied = 0;
+      dates.forEach((date, i) => {
+        if (l.timetable[i]) { l.timetable[i].date = date; applied++; }
+      });
+      // Update inputs in-place so status message stays visible
+      document.querySelectorAll('#tab-timetable .tt-edit-input').forEach((inp, i) => {
+        if (l.timetable[i]) inp.value = l.timetable[i].date || '';
+      });
+      setStatus(`✓ ${applied} dates imported and saved`, 'ok');
+      save();
     }
   };
 
-  if (typeof mammoth !== 'undefined') {
-    const reader = new FileReader();
-    reader.onerror = () => setStatus('⚠️ Could not read file', 'err');
-    reader.onload = e => {
-      mammoth.extractRawText({ arrayBuffer: e.target.result })
-        .then(r => applyDates(extractDatesFromText(r.value)))
-        .catch(() => {
-          // Mammoth failed — try reading as plain text
-          const text = new TextDecoder('utf-8', { fatal: false }).decode(e.target.result);
-          const dates = extractDatesFromText(text);
-          if (dates.length) applyDates(dates);
-          else setStatus('⚠️ Could not parse this file type. Try saving your timetable as a .docx Word document.', 'err');
-        });
-    };
-    reader.readAsArrayBuffer(file);
-  } else {
-    // Mammoth not loaded — try plain text read
-    const reader = new FileReader();
-    reader.onerror = () => setStatus('⚠️ Could not read file', 'err');
-    reader.onload = e => applyDates(extractDatesFromText(e.target.result));
-    reader.readAsText(file);
+  try {
+    const buf = await file.arrayBuffer();
+    // Try our direct ZIP reader first (works for .docx, no library needed)
+    const xml = await readDocxText(buf);
+    if (xml) {
+      const plain = xml.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+      applyDates(extractDatesFromText(plain));
+      return;
+    }
+    // Fallback: mammoth
+    if (typeof mammoth !== 'undefined') {
+      const result = await mammoth.extractRawText({ arrayBuffer: buf });
+      applyDates(extractDatesFromText(result.value));
+      return;
+    }
+    setStatus('⚠️ Could not parse this file. Please save your timetable as a .docx Word document.', 'err');
+  } catch(err) {
+    setStatus('⚠️ Error reading file: ' + err.message, 'err');
   }
 }
 
@@ -546,7 +585,6 @@ function handleTTDrop(event, mode) {
   document.getElementById(`${mode}-tt-zone`)?.classList.remove('dragover');
   const file = event.dataTransfer?.files?.[0];
   if (file) parseTTDocx(file, mode);
-  else document.getElementById(`${mode}-tt-status`).textContent = '⚠️ No file detected — try using the Browse button instead';
 }
 
 // ── DRAG & DROP ───────────────────────
