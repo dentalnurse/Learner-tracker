@@ -406,19 +406,23 @@ function renderTimetable() {
     <div class="page-header"><div class="page-title">Timetable</div></div>
     <div class="learner-bar" id="tt-btns"></div>
     <div class="form-card" style="max-width:100%;margin-bottom:20px;">
-      <div style="font-size:12px;font-weight:500;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Upload timetable to auto-fill dates</div>
-      <div class="file-upload-zone" id="tt-tt-zone"
-        onclick="document.getElementById('tt-tt-file').click()"
-        ondragover="event.preventDefault();this.classList.add('dragover')"
-        ondragleave="this.classList.remove('dragover')"
-        ondrop="handleTTDrop(event,'tt')">
-        <input type="file" id="tt-tt-file" accept=".docx" style="display:none" onchange="parseTTDocx(this.files[0],'tt')">
-        <div id="tt-tt-label">📄 Click to upload or drag &amp; drop timetable .docx — dates will be matched to units in order</div>
+      <div style="font-size:12px;font-weight:500;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Auto-fill dates from timetable document</div>
+      <div class="tt-upload-zone" id="tt-tt-zone">
+        <input type="file" id="tt-tt-file" accept=".docx,.doc,.txt" style="display:none" onchange="parseTTDocx(this.files[0],'tt')">
+        <span style="font-size:13px;color:var(--ink3);">Drag &amp; drop your timetable here, or</span>
+        <button class="btn-save" style="margin-left:10px;padding:7px 18px;" onclick="document.getElementById('tt-tt-file').click()">Browse file</button>
       </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--ink3);">Dates should be in the format <strong>15 Jan 2026</strong> or <strong>15/01/2026</strong>. Existing dates will be overwritten.</div>
+      <div id="tt-tt-status" class="tt-upload-status" style="display:none"></div>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink3);">Dates are matched to units in order. Format: <strong>15 Jan 2026</strong> or <strong>15/01/2026</strong>. Existing dates will be overwritten.</div>
     </div>
     <div class="table-card"><table class="tbl"><thead><tr><th style="width:60px; text-align:center;">ID</th><th>Unit</th><th>Target Date</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   learnerBar('tt-btns', cTT, 'selectTT');
+  const zone = document.getElementById('tt-tt-zone');
+  if (zone) {
+    ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('dragover'); }));
+    zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dragover'); });
+    zone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('dragover'); parseTTDocx(e.dataTransfer?.files?.[0], 'tt'); });
+  }
 }
 
 function renderCourses() {
@@ -491,37 +495,58 @@ function extractDatesFromText(text) {
 
 function parseTTDocx(file, mode) {
   if (!file) return;
-  const label = document.getElementById(`${mode}-tt-label`);
-  const zone  = document.getElementById(`${mode}-tt-zone`);
-  if (label) label.textContent = '⏳ Reading document…';
-  const reader = new FileReader();
-  reader.onload = e => {
-    mammoth.extractRawText({ arrayBuffer: e.target.result }).then(result => {
-      const dates = extractDatesFromText(result.value);
-      if (!dates.length) {
-        if (label) label.textContent = '⚠️ No dates found — check format and try again';
-        return;
-      }
-      if (mode === 'add') {
-        document.getElementById('add-timetable').value = dates.join('\n');
-        if (label) label.textContent = `✓ ${dates.length} dates imported — review below`;
-        if (zone)  zone.classList.add('loaded');
-      } else {
-        // Timetable tab — apply directly to the current learner
-        const l = DB.learners[cTT];
-        dates.forEach((date, i) => { if (l.timetable[i]) l.timetable[i].date = date; });
-        save().then(() => renderTimetable());
-      }
-    }).catch(() => { if (label) label.textContent = '⚠️ Could not read file'; });
+  const setStatus = (msg, cls) => {
+    const el = document.getElementById(`${mode}-tt-status`);
+    if (el) { el.textContent = msg; el.className = `tt-upload-status ${cls||''}`; el.style.display = 'block'; }
   };
-  reader.readAsArrayBuffer(file);
+  const zone = document.getElementById(`${mode}-tt-zone`);
+  setStatus('⏳ Reading document…', '');
+  if (zone) zone.classList.add('loaded');
+
+  const applyDates = dates => {
+    if (!dates.length) { setStatus('⚠️ No dates found — make sure dates are written as "15 Jan 2026" or "15/01/2026"', 'err'); if (zone) zone.classList.remove('loaded'); return; }
+    if (mode === 'add') {
+      document.getElementById('add-timetable').value = dates.join('\n');
+      setStatus(`✓ ${dates.length} dates found — review in the box below`, 'ok');
+    } else {
+      const l = DB.learners[cTT];
+      dates.forEach((date, i) => { if (l.timetable[i]) l.timetable[i].date = date; });
+      setStatus(`✓ ${dates.length} dates imported`, 'ok');
+      save().then(() => renderTimetable());
+    }
+  };
+
+  if (typeof mammoth !== 'undefined') {
+    const reader = new FileReader();
+    reader.onerror = () => setStatus('⚠️ Could not read file', 'err');
+    reader.onload = e => {
+      mammoth.extractRawText({ arrayBuffer: e.target.result })
+        .then(r => applyDates(extractDatesFromText(r.value)))
+        .catch(() => {
+          // Mammoth failed — try reading as plain text
+          const text = new TextDecoder('utf-8', { fatal: false }).decode(e.target.result);
+          const dates = extractDatesFromText(text);
+          if (dates.length) applyDates(dates);
+          else setStatus('⚠️ Could not parse this file type. Try saving your timetable as a .docx Word document.', 'err');
+        });
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    // Mammoth not loaded — try plain text read
+    const reader = new FileReader();
+    reader.onerror = () => setStatus('⚠️ Could not read file', 'err');
+    reader.onload = e => applyDates(extractDatesFromText(e.target.result));
+    reader.readAsText(file);
+  }
 }
 
 function handleTTDrop(event, mode) {
   event.preventDefault();
+  event.stopPropagation();
   document.getElementById(`${mode}-tt-zone`)?.classList.remove('dragover');
-  const file = event.dataTransfer.files[0];
+  const file = event.dataTransfer?.files?.[0];
   if (file) parseTTDocx(file, mode);
+  else document.getElementById(`${mode}-tt-status`).textContent = '⚠️ No file detected — try using the Browse button instead';
 }
 
 // ── DRAG & DROP ───────────────────────

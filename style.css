@@ -479,6 +479,33 @@ select:focus{outline:none;border-color:var(--teal)}
   .pt-grid, .pt-grid-display { grid-template-columns: 1fr; }
 }
 
+/* ── TIMETABLE UPLOAD ZONE ──────────────────────── */
+.tt-upload-zone {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: #fff;
+  transition: all .15s;
+  cursor: default;
+}
+.tt-upload-zone.dragover {
+  border-color: var(--teal);
+  background: var(--teal-l);
+}
+.tt-upload-status {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--cream2);
+  color: var(--ink2);
+}
+.tt-upload-status.ok  { background: var(--teal-l);  color: var(--teal2); }
+.tt-upload-status.err { background: var(--red-l);   color: var(--red);   }
+
 /* ── PDP & REFLECTIONS ──────────────────────────── */
 .pdp-check {
   display: inline-flex;

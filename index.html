@@ -98,6 +98,7 @@
             <input type="file" id="add-tt-file" accept=".docx" onchange="parseTTDocx(this.files[0],'add')">
             <div id="add-tt-label">📄 Click to upload or drag &amp; drop timetable .docx</div>
           </div>
+          <div id="add-tt-status" class="tt-upload-status" style="display:none;margin-top:8px;"></div>
           <div style="margin-top:10px;font-size:11px;color:var(--ink3)">Or enter dates manually below (one per line, in unit order)</div>
           <textarea id="add-timetable" rows="4" style="margin-top:6px;width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;color:var(--ink)" placeholder="30 Mar 2026&#10;04 May 2026&#10;25 May 2026&#10;..."></textarea>
         </div>
