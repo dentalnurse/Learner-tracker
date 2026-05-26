@@ -166,9 +166,16 @@ function initialFirebaseLoad() {
     if (lData && lData.learners) {
       DB = lData;
       DB.learners.forEach(l => {
-        if(!l.timetable || l.timetable.length === 0) {
-            const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
-            l.timetable = tl.map(t => ({ label: t.label, reqs: t.reqs, date: '' }));
+        // Always merge with master labels so entries always have label/reqs/date
+        const tl = l.type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
+        if (!l.timetable || l.timetable.length === 0) {
+          l.timetable = tl.map(t => ({ label: t.label, reqs: t.reqs, date: '' }));
+        } else {
+          l.timetable = l.timetable.map((t, i) => ({
+            label: (t && t.label) || (tl[i] ? tl[i].label : ''),
+            reqs:  (t && t.reqs)  || (tl[i] ? tl[i].reqs  : ''),
+            date:  (t && t.date)  || (typeof t === 'string' ? t : '')
+          }));
         }
         if (l.type === 'ohe' && !l.patientTypes) {
           l.patientTypes = { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false };
@@ -549,12 +556,12 @@ async function parseTTDocx(file, mode) {
       dates.forEach((date, i) => {
         if (l.timetable[i]) { l.timetable[i].date = date; applied++; }
       });
-      // Update inputs in-place so status message stays visible
-      document.querySelectorAll('#tab-timetable .tt-edit-input').forEach((inp, i) => {
-        if (l.timetable[i]) inp.value = l.timetable[i].date || '';
+      save().then(() => {
+        renderTimetable();
+        // Re-show status after re-render
+        const el = document.getElementById('tt-tt-status');
+        if (el) { el.textContent = `✓ ${applied} dates imported`; el.className = 'tt-upload-status ok'; el.style.display = 'block'; }
       });
-      setStatus(`✓ ${applied} dates imported and saved`, 'ok');
-      save();
     }
   };
 
