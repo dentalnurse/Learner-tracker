@@ -97,9 +97,19 @@ function editMarkingWeek(learnerIdx, week, event) {
     <button onclick="setMarkingWeek(${learnerIdx},'${week}','missed')">✗ Missed</button>
   `;
 
-  const dot = event.currentTarget;
-  dot.style.position = 'relative';
-  dot.appendChild(popup);
+  // Attach to body so overflow:hidden on card doesn't clip it
+  document.body.appendChild(popup);
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const pw = popup.offsetWidth || 180;
+  const ph = popup.offsetHeight || 110;
+  let top  = rect.top - ph - 8 + window.scrollY;
+  let left = rect.left + rect.width / 2 - pw / 2 + window.scrollX;
+  if (top < 8) top = rect.bottom + 8 + window.scrollY;
+  if (left < 8) left = 8;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  popup.style.top  = top + 'px';
+  popup.style.left = left + 'px';
 
   const close = e => { if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); } };
   setTimeout(() => document.addEventListener('click', close), 0);
@@ -164,12 +174,32 @@ function calculateOnTrack(l) {
   const today = new Date(); today.setHours(0,0,0,0);
   const withDates = l.timetable.filter(t => t.date && t.date.trim());
   if (!withDates.length) return null;
-  const passed = withDates.filter(t => { const d=parseDate(t.date); return d && d<=today; }).length;
-  if (!passed) return null;
-  const expectedPct = passed / l.timetable.length;
-  const actualPct = l.acs.length ? l.progress.filter(s=>s==='Completed').length / l.acs.length : 0;
-  const diff = actualPct - expectedPct;
-  return diff >= -0.1 ? 'on-track' : diff >= -0.2 ? 'watch' : 'at-risk';
+
+  // Only look at sessions whose target date has passed
+  const pastSessions = withDates.filter(t => { const d = parseDate(t.date); return d && d <= today; });
+  if (!pastSessions.length) return null;
+
+  let complete = 0, inProgress = 0, notComplete = 0;
+  pastSessions.forEach(t => {
+    const i = l.timetable.indexOf(t);
+    const status = getTimetableStatus(l, i);
+    if (status === null) return;          // can't match to ACs — skip (e.g. Final Portfolio)
+    if (status === 'Complete')   complete++;
+    else if (status === 'In Progress') inProgress++;
+    else notComplete++;
+  });
+
+  const tracked = complete + inProgress + notComplete;
+  if (!tracked) return null;
+
+  // Any past-due unit with nothing done at all → at-risk
+  if (notComplete > 0) return 'at-risk';
+  // Past-due unit(s) with only amendments but zero completed → at-risk
+  if (inProgress > 0 && complete === 0) return 'at-risk';
+  // Mix of complete and in-progress → watch
+  if (inProgress > 0) return 'watch';
+  // All past-due units fully completed → on-track
+  return 'on-track';
 }
 
 // ── TIMETABLE MASTER LABELS ───────────────────────

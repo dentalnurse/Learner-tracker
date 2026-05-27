@@ -568,9 +568,6 @@ select:focus{outline:none;border-color:var(--teal)}
 .mw-missed  .mw-dot-inner { background: var(--red); }
 .mw-edit-popup {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
   background: #fff;
   border: 1.5px solid var(--cream2);
   border-radius: 10px;
