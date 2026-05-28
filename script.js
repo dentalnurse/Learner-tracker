@@ -71,13 +71,13 @@ const OHE_SOS = [
   { key: 'so2', label: 'SO2 – Reflective Account' },
   { key: 'so3', label: 'SO3 – PDP' },
 ];
-// Which PCAs / SOs must be complete by each phase's target date
+// Cumulative counts required by each phase's target date (any PCAs, not specific ones)
 const OHE_PHASE_REQS = {
-  'Phase 2 – PCAs 1–3':   ['pca1','pca2','pca3'],
-  'Phase 3 – PCAs 4–6':   ['pca4','pca5','pca6'],
-  'Phase 4 – PCAs 7–9':   ['pca7','pca8','pca9'],
-  'Phase 5 – PCAs 10–11': ['pca10','pca11'],
-  'Phase 6 – SOs':         ['so1','so2','so3'],
+  'Phase 2 – PCAs 1–3':   { pcas: 3,  sos: 0 },
+  'Phase 3 – PCAs 4–6':   { pcas: 6,  sos: 0 },
+  'Phase 4 – PCAs 7–9':   { pcas: 9,  sos: 0 },
+  'Phase 5 – PCAs 10–11': { pcas: 11, sos: 0 },
+  'Phase 6 – SOs':         { pcas: 11, sos: 3 },
 };
 
 function parseDate(str) {
@@ -184,15 +184,14 @@ function unitKeyFromLabel(label) {
 function getTimetableStatus(l, ttIndex) {
   const label = (l.timetable[ttIndex] || {}).label || '';
 
-  // OHE: map phase labels to required PCAs/SOs
+  // OHE: check cumulative PCA/SO counts against phase requirements
   if (l.type === 'ohe') {
     const reqs = OHE_PHASE_REQS[label];
-    if (!reqs || !reqs.length) return null; // Phase 1 Theory, Exam – nothing tracked
-    const pcas = l.pcas || {};
-    const sos  = l.sos  || {};
-    const done = reqs.filter(k => k.startsWith('pca') ? !!pcas[k] : !!sos[k]).length;
-    if (done === reqs.length) return 'Complete';
-    if (done > 0) return 'In Progress';
+    if (!reqs) return null; // Phase 1 Theory, Exam – nothing tracked
+    const pcasDone = OHE_PCAS.filter(p => !!(l.pcas || {})[p.key]).length;
+    const sosDone  = OHE_SOS.filter(s => !!(l.sos  || {})[s.key]).length;
+    if (pcasDone >= reqs.pcas && sosDone >= reqs.sos) return 'Complete';
+    if (pcasDone > 0 || sosDone > 0) return 'In Progress';
     return 'Not Complete';
   }
 
@@ -370,27 +369,29 @@ function renderDashboard() {
   const onTrackChip = `<span class="risk-chip ${trackCls}" style="${!onTrack?'background:var(--cream2);color:var(--ink3)':''}">${trackText}</span>`;
   const pbColor = pct >= 75 ? '' : pct >= 40 ? 'amber' : 'red';
 
-  const pdpUnitsDash = l.type === 'ohe' ? OHE_PDP_UNITS : DIPLOMA_PDP_UNITS;
-  const pdpDash = l.pdp || {};
-  const pdpDoneDash = pdpUnitsDash.filter(u => pdpDash[u.key]?.pdp).length;
-  const refDoneDash = pdpUnitsDash.filter(u => pdpDash[u.key]?.reflection).length;
-  const pdpDashHtml = `<div class="table-card" style="margin-bottom:16px;">
-    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
-      <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDoneDash}/${pdpUnitsDash.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDoneDash}/${pdpUnitsDash.length}</strong></div>
-    </div>
-    <table class="tbl">
-      <thead><tr><th>Unit</th><th style="text-align:center;width:90px">PDP</th><th style="text-align:center;width:90px">Reflection</th></tr></thead>
-      <tbody>${pdpUnitsDash.map(u => {
-        const e = pdpDash[u.key] || {};
-        return `<tr>
-          <td style="font-size:12.5px">${u.label}</td>
-          <td style="text-align:center"><span class="pdp-dot ${e.pdp?'pdp-done':'pdp-open'}">${e.pdp?'✓':''}</span></td>
-          <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
-  </div>`;
+  const pdpDashHtml = l.type === 'ohe' ? '' : (() => {
+    const pdpUnits = DIPLOMA_PDP_UNITS;
+    const pdpDash = l.pdp || {};
+    const pdpDone = pdpUnits.filter(u => pdpDash[u.key]?.pdp).length;
+    const refDone = pdpUnits.filter(u => pdpDash[u.key]?.reflection).length;
+    return `<div class="table-card" style="margin-bottom:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
+        <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDone}/${pdpUnits.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDone}/${pdpUnits.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Unit</th><th style="text-align:center;width:90px">PDP</th><th style="text-align:center;width:90px">Reflection</th></tr></thead>
+        <tbody>${pdpUnits.map(u => {
+          const e = pdpDash[u.key] || {};
+          return `<tr>
+            <td style="font-size:12.5px">${u.label}</td>
+            <td style="text-align:center"><span class="pdp-dot ${e.pdp?'pdp-done':'pdp-open'}">${e.pdp?'✓':''}</span></td>
+            <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  })();
 
   const history = getMarkingHistory(l);
   const missed = history.filter(h => h.type === 'missed');
@@ -494,27 +495,29 @@ function renderMarking() {
     </div>`;
   })() : '';
 
-  const pdpUnits = l.type === 'ohe' ? OHE_PDP_UNITS : DIPLOMA_PDP_UNITS;
-  const pdp = l.pdp || {};
-  const pdpDone = pdpUnits.filter(u => pdp[u.key]?.pdp).length;
-  const refDone = pdpUnits.filter(u => pdp[u.key]?.reflection).length;
-  const pdpHtml = `<div class="table-card" style="margin-top:16px;">
-    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
-      <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDone}/${pdpUnits.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDone}/${pdpUnits.length}</strong></div>
-    </div>
-    <table class="tbl">
-      <thead><tr><th>Unit</th><th style="text-align:center;width:110px">PDP</th><th style="text-align:center;width:110px">Reflection</th></tr></thead>
-      <tbody>${pdpUnits.map(u => {
-        const entry = pdp[u.key] || {};
-        return `<tr>
-          <td style="font-size:12.5px">${u.label}</td>
-          <td style="text-align:center"><label class="pdp-check ${entry.pdp?'checked':''}"><input type="checkbox" ${entry.pdp?'checked':''} onchange="togglePDP(${cMark},'${u.key}','pdp')"><span>${entry.pdp?'✓ Done':'○'}</span></label></td>
-          <td style="text-align:center"><label class="pdp-check ${entry.reflection?'checked':''}"><input type="checkbox" ${entry.reflection?'checked':''} onchange="togglePDP(${cMark},'${u.key}','reflection')"><span>${entry.reflection?'✓ Done':'○'}</span></label></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
-  </div>`;
+  const pdpHtml = l.type === 'ohe' ? '' : (() => {
+    const pdpUnits = DIPLOMA_PDP_UNITS;
+    const pdp = l.pdp || {};
+    const pdpDone = pdpUnits.filter(u => pdp[u.key]?.pdp).length;
+    const refDone = pdpUnits.filter(u => pdp[u.key]?.reflection).length;
+    return `<div class="table-card" style="margin-top:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">End of Unit PDP &amp; Reflections</div>
+        <div style="font-size:12px;color:var(--ink3);">PDP <strong style="color:var(--ink)">${pdpDone}/${pdpUnits.length}</strong> &nbsp;·&nbsp; Reflection <strong style="color:var(--ink)">${refDone}/${pdpUnits.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Unit</th><th style="text-align:center;width:110px">PDP</th><th style="text-align:center;width:110px">Reflection</th></tr></thead>
+        <tbody>${pdpUnits.map(u => {
+          const entry = pdp[u.key] || {};
+          return `<tr>
+            <td style="font-size:12.5px">${u.label}</td>
+            <td style="text-align:center"><label class="pdp-check ${entry.pdp?'checked':''}"><input type="checkbox" ${entry.pdp?'checked':''} onchange="togglePDP(${cMark},'${u.key}','pdp')"><span>${entry.pdp?'✓ Done':'○'}</span></label></td>
+            <td style="text-align:center"><label class="pdp-check ${entry.reflection?'checked':''}"><input type="checkbox" ${entry.reflection?'checked':''} onchange="togglePDP(${cMark},'${u.key}','reflection')"><span>${entry.reflection?'✓ Done':'○'}</span></label></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  })();
 
   el.innerHTML = `<div class="page-header"><div class="page-title">Weekly Marking</div></div><div class="learner-bar" id="mark-btns"></div>
     <div class="table-card" style="padding:20px;margin-bottom:16px; border-left:5px solid ${isDone?'var(--teal)':'var(--amber)'}">
