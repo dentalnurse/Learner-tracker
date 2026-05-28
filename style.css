@@ -593,3 +593,4 @@ select:focus{outline:none;border-color:var(--teal)}
   transition: background .15s;
 }
 .mw-edit-popup button:hover { background: var(--cream2); }
+.so-locked { opacity: .5; pointer-events: none; cursor: not-allowed; }

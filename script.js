@@ -53,6 +53,33 @@ const OHE_PATIENT_TYPES = [
   { key: 'specialNeeds',  label: 'Special Needs / Medically compromised patient' }
 ];
 
+const OHE_PCAS = [
+  { key: 'pca1',  label: 'Prevention of Caries Visit 1' },
+  { key: 'pca2',  label: 'Prevention of Caries Visit 2' },
+  { key: 'pca3',  label: 'Periodontal Disease Visit 1' },
+  { key: 'pca4',  label: 'Periodontal Disease Visit 2' },
+  { key: 'pca5',  label: 'Non-Carious Tooth Surface Loss 1' },
+  { key: 'pca6',  label: 'Non-Carious Tooth Surface Loss 2' },
+  { key: 'pca7',  label: 'Oral Conditions Visit 1' },
+  { key: 'pca8',  label: 'Oral Conditions Visit 2' },
+  { key: 'pca9',  label: 'Care of Dentures' },
+  { key: 'pca10', label: 'Care of Fixed Prosthesis' },
+  { key: 'pca11', label: 'Care of Orthodontic Appliances' },
+];
+const OHE_SOS = [
+  { key: 'so1', label: 'SO1 – Exhibition' },
+  { key: 'so2', label: 'SO2 – Reflective Account' },
+  { key: 'so3', label: 'SO3 – PDP' },
+];
+// Which PCAs / SOs must be complete by each phase's target date
+const OHE_PHASE_REQS = {
+  'Phase 2 – PCAs 1–3':   ['pca1','pca2','pca3'],
+  'Phase 3 – PCAs 4–6':   ['pca4','pca5','pca6'],
+  'Phase 4 – PCAs 7–9':   ['pca7','pca8','pca9'],
+  'Phase 5 – PCAs 10–11': ['pca10','pca11'],
+  'Phase 6 – SOs':         ['so1','so2','so3'],
+};
+
 function parseDate(str) {
   if (!str || !str.trim()) return null;
   const d = new Date(str);
@@ -156,6 +183,20 @@ function unitKeyFromLabel(label) {
 
 function getTimetableStatus(l, ttIndex) {
   const label = (l.timetable[ttIndex] || {}).label || '';
+
+  // OHE: map phase labels to required PCAs/SOs
+  if (l.type === 'ohe') {
+    const reqs = OHE_PHASE_REQS[label];
+    if (!reqs || !reqs.length) return null; // Phase 1 Theory, Exam – nothing tracked
+    const pcas = l.pcas || {};
+    const sos  = l.sos  || {};
+    const done = reqs.filter(k => k.startsWith('pca') ? !!pcas[k] : !!sos[k]).length;
+    if (done === reqs.length) return 'Complete';
+    if (done > 0) return 'In Progress';
+    return 'Not Complete';
+  }
+
+  // Diploma: match by unit key in AC refs
   const key = unitKeyFromLabel(label);
   if (!key) return null;
   const indices = l.acs.reduce((acc, ac, i) => {
@@ -175,7 +216,6 @@ function calculateOnTrack(l) {
   const withDates = l.timetable.filter(t => t.date && t.date.trim());
   if (!withDates.length) return null;
 
-  // Only look at sessions whose target date has passed
   const pastSessions = withDates.filter(t => { const d = parseDate(t.date); return d && d <= today; });
   if (!pastSessions.length) return null;
 
@@ -183,8 +223,8 @@ function calculateOnTrack(l) {
   pastSessions.forEach(t => {
     const i = l.timetable.indexOf(t);
     const status = getTimetableStatus(l, i);
-    if (status === null) return;          // can't match to ACs — skip (e.g. Final Portfolio)
-    if (status === 'Complete')   complete++;
+    if (status === null) return; // no tracked items for this session (e.g. Phase 1 Theory, Final Portfolio)
+    if (status === 'Complete')      complete++;
     else if (status === 'In Progress') inProgress++;
     else notComplete++;
   });
@@ -192,13 +232,9 @@ function calculateOnTrack(l) {
   const tracked = complete + inProgress + notComplete;
   if (!tracked) return null;
 
-  // Any past-due unit with nothing done at all → at-risk
   if (notComplete > 0) return 'at-risk';
-  // Past-due unit(s) with only amendments but zero completed → at-risk
   if (inProgress > 0 && complete === 0) return 'at-risk';
-  // Mix of complete and in-progress → watch
   if (inProgress > 0) return 'watch';
-  // All past-due units fully completed → on-track
   return 'on-track';
 }
 
@@ -266,8 +302,16 @@ function initialFirebaseLoad() {
         if (l.type === 'ohe' && !l.patientTypes) {
           l.patientTypes = { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false };
         }
+        if (l.type === 'ohe' && !l.pcas) {
+          l.pcas = {};
+          OHE_PCAS.forEach(p => { l.pcas[p.key] = false; });
+        }
+        if (l.type === 'ohe' && !l.sos) {
+          l.sos = {};
+          OHE_SOS.forEach(s => { l.sos[s.key] = false; });
+        }
         if (!l.pdp) l.pdp = {};
-        syncLearnerToMaster(l);
+        if (l.type !== 'ohe') syncLearnerToMaster(l);
       });
     }
     renderDashboard();
@@ -298,9 +342,27 @@ function renderDashboard() {
   const el = document.getElementById('tab-dashboard');
   if (!el || !DB.learners || !DB.learners[cDash]) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
   const l = DB.learners[cDash];
-  const done = l.progress.filter(s => s === 'Completed').length;
-  const pct = l.acs.length > 0 ? Math.round((done / l.acs.length) * 100) : 0;
-  const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td class="ac-ref">${ac.ref}</td><td style="text-align:center">${ac.n||1}</td><td>${badge(l.progress[i])}</td></tr>`).join('');
+
+  let done, pct, progressLabel, statsHtml, bottomHtml;
+  if (l.type === 'ohe') {
+    const op = getOHEProgress(l);
+    done = op.pcaDone + op.sosDone;
+    pct  = op.pct;
+    progressLabel = `${op.pcaDone} of 11 PCAs · ${op.sosDone} of 3 SOs completed`;
+    statsHtml = `
+      <div class="stat-card"><div class="stat-label">PCAs</div><div class="stat-value">${op.pcaDone}/11</div></div>
+      <div class="stat-card"><div class="stat-label">SOs</div><div class="stat-value">${op.sosDone}/3</div></div>`;
+    bottomHtml = oheSectionsHtml(l, cDash, false);
+  } else {
+    done = l.progress.filter(s => s === 'Completed').length;
+    pct  = l.acs.length > 0 ? Math.round((done / l.acs.length) * 100) : 0;
+    progressLabel = `${done} of ${l.acs.length} assessment criteria completed`;
+    const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td class="ac-ref">${ac.ref}</td><td style="text-align:center">${ac.n||1}</td><td>${badge(l.progress[i])}</td></tr>`).join('');
+    statsHtml = `
+      <div class="stat-card"><div class="stat-label">Progress</div><div class="stat-value">${pct}%</div></div>
+      <div class="stat-card"><div class="stat-label">Done</div><div class="stat-value">${done}/${l.acs.length}</div></div>`;
+    bottomHtml = `<div class="table-card"><table class="tbl"><thead><tr><th>Unit</th><th>Ref</th><th style="text-align:center">Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
 
   const onTrack = calculateOnTrack(l);
   const trackLabels = { 'on-track': ['On Track','risk-on'], 'watch': ['Watch','risk-watch'], 'at-risk': ['At Risk','risk-at'] };
@@ -380,21 +442,20 @@ function renderDashboard() {
     </div>
     <div class="progress-card">
       <div class="pb-meta">
-        <span class="pb-label">${done} of ${l.acs.length} assessment criteria completed</span>
+        <span class="pb-label">${progressLabel}</span>
         ${onTrackChip}
       </div>
       <div class="pb-track"><div class="pb-fill ${pbColor}" style="width:${pct}%"></div></div>
       <div class="pb-meta"><span class="pb-label">${onTrack?`Based on ${l.timetable.filter(t=>t.date).length} scheduled sessions`:'Add session dates in Timetable to enable on-track tracking'}</span><span class="pb-label" style="font-weight:600;color:var(--ink2)">${pct}%</span></div>
     </div>
     <div class="stats-row">
-      <div class="stat-card"><div class="stat-label">Progress</div><div class="stat-value">${pct}%</div></div>
-      <div class="stat-card"><div class="stat-label">Done</div><div class="stat-value">${done}/${l.acs.length}</div></div>
+      ${statsHtml}
       <div class="stat-card"><div class="stat-label">Schedule</div><div class="stat-value" style="font-size:${onTrack?'17px':'13px'};margin-top:${onTrack?'6px':'10px'};color:${onTrack==='on-track'?'var(--teal)':onTrack==='watch'?'var(--amber)':onTrack==='at-risk'?'var(--red)':'var(--ink3)'}">${trackText}</div><div class="stat-sub">vs timetable</div></div>
     </div>
     ${ptHtml}
     ${pdpDashHtml}
     ${historyHtml}
-    <div class="table-card"><table class="tbl"><thead><tr><th>Unit</th><th>Ref</th><th style="text-align:center">Qty</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    ${bottomHtml}`;
   learnerBar('dash-btns', cDash, 'selectDash');
 }
 
@@ -403,7 +464,14 @@ function renderMarking() {
   const l = DB.learners[cMark];
   if(!l) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
   const isDone = isMarkedThisWeek(l.lastMarked);
-  const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td>${ac.ref}</td><td><select class="tt-edit-input" style="width:100%" onchange="updateMarking(${i}, this.value)">${STATUSES.map(s=>`<option ${s===(l.progress[i]||'Not started')?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('');
+
+  let markingBodyHtml;
+  if (l.type === 'ohe') {
+    markingBodyHtml = oheSectionsHtml(l, cMark, true);
+  } else {
+    const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td>${ac.ref}</td><td><select class="tt-edit-input" style="width:100%" onchange="updateMarking(${i}, this.value)">${STATUSES.map(s=>`<option ${s===(l.progress[i]||'Not started')?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('');
+    markingBodyHtml = `<table class="tbl"><tbody>${rows}</tbody></table>`;
+  }
 
   const ptHtml = l.type === 'ohe' ? (() => {
     const pts = l.patientTypes || {};
@@ -449,13 +517,13 @@ function renderMarking() {
   </div>`;
 
   el.innerHTML = `<div class="page-header"><div class="page-title">Weekly Marking</div></div><div class="learner-bar" id="mark-btns"></div>
-    <div class="table-card" style="padding:20px; border-left:5px solid ${isDone?'var(--teal)':'var(--amber)'}">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+    <div class="table-card" style="padding:20px;margin-bottom:16px; border-left:5px solid ${isDone?'var(--teal)':'var(--amber)'}">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
         <div style="font-weight:600;">Status: ${isDone ? '✅ Marked for this week':'⏳ Pending review'}</div>
         <button class="btn-save" style="background:${isDone?'var(--ink3)':'var(--blue)'}" onclick="markNothingToSubmit(${cMark})">${isDone?'Reset Week':'Nothing to mark this week'}</button>
       </div>
-      <table class="tbl"><tbody>${rows}</tbody></table>
     </div>
+    ${markingBodyHtml}
     ${pdpHtml}
     ${ptHtml}`;
   learnerBar('mark-btns', cMark, 'selectMark');
@@ -471,6 +539,92 @@ function togglePatientType(learnerIdx, key) {
   if (!DB.learners[learnerIdx].patientTypes) DB.learners[learnerIdx].patientTypes = {};
   DB.learners[learnerIdx].patientTypes[key] = !DB.learners[learnerIdx].patientTypes[key];
   save().then(() => renderMarking());
+}
+
+function getOHEProgress(l) {
+  const pcas = l.pcas || {};
+  const sos  = l.sos  || {};
+  const pcaDone = OHE_PCAS.filter(p => pcas[p.key]).length;
+  const sosDone = OHE_SOS.filter(s => sos[s.key]).length;
+  const total = OHE_PCAS.length + OHE_SOS.length; // 14
+  const pct = Math.round(((pcaDone + sosDone) / total) * 100);
+  return { pcaDone, sosDone, total, pct };
+}
+
+function togglePCA(learnerIdx, key) {
+  const l = DB.learners[learnerIdx];
+  if (!l.pcas) l.pcas = {};
+  l.pcas[key] = !l.pcas[key];
+  if (l.pcas[key]) { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
+  save().then(() => renderMarking());
+}
+
+function toggleSO(learnerIdx, key) {
+  const l = DB.learners[learnerIdx];
+  if (!l.sos) l.sos = {};
+  const idx = OHE_SOS.findIndex(s => s.key === key);
+  if (idx > 0 && !l.sos[OHE_SOS[idx - 1].key]) return; // previous not done — blocked
+  l.sos[key] = !l.sos[key];
+  // Unticking cascades: also untick all subsequent SOs
+  if (!l.sos[key]) {
+    for (let i = idx + 1; i < OHE_SOS.length; i++) l.sos[OHE_SOS[i].key] = false;
+  } else {
+    l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked');
+  }
+  save().then(() => renderMarking());
+}
+
+function oheSectionsHtml(l, learnerIdx, interactive) {
+  const pcas = l.pcas || {};
+  const sos  = l.sos  || {};
+  const pcaDone = OHE_PCAS.filter(p => pcas[p.key]).length;
+  const sosDone = OHE_SOS.filter(s => sos[s.key]).length;
+
+  const pcaItems = OHE_PCAS.map(p => interactive ? `
+    <label class="pt-check ${pcas[p.key] ? 'checked' : ''}">
+      <input type="checkbox" ${pcas[p.key] ? 'checked' : ''} onchange="togglePCA(${learnerIdx},'${p.key}')">
+      <div class="pt-check-text"><div class="pt-check-label">${p.label}</div></div>
+    </label>` : `
+    <div class="pt-item ${pcas[p.key] ? 'pt-done' : 'pt-missing'}">
+      <span class="pt-tick">${pcas[p.key] ? '✓' : '○'}</span>${p.label}
+    </div>`).join('');
+
+  const soItems = OHE_SOS.map((s, i) => {
+    const done   = !!sos[s.key];
+    const locked = i > 0 && !sos[OHE_SOS[i - 1].key];
+    return interactive ? `
+      <label class="pt-check ${done ? 'checked' : ''} ${locked ? 'so-locked' : ''}">
+        <input type="checkbox" ${done ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="toggleSO(${learnerIdx},'${s.key}')">
+        <div class="pt-check-text">
+          <div class="pt-check-label">${locked ? '🔒 ' : ''}${s.label}</div>
+          ${locked ? `<div class="pt-check-sub">Complete ${OHE_SOS[i-1].label} first</div>` : ''}
+        </div>
+      </label>` : `
+      <div class="pt-item ${done ? 'pt-done' : 'pt-missing'}">
+        <span class="pt-tick">${done ? '✓' : locked ? '🔒' : '○'}</span>${s.label}
+      </div>`;
+  }).join('');
+
+  const pcaChip = `<span class="risk-chip ${pcaDone === 11 ? 'risk-on' : pcaDone >= 6 ? 'risk-watch' : 'risk-at'}">${pcaDone}/11 completed</span>`;
+  const soChip  = sosDone === 3 ? `<span class="risk-chip risk-on">3/3 completed</span>` :
+                  sosDone > 0   ? `<span class="risk-chip risk-watch">${sosDone}/3 completed</span>` :
+                                  `<span class="risk-chip" style="background:var(--cream2);color:var(--ink3)">0/3 completed</span>`;
+
+  return `
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">PCAs</div>
+        ${pcaChip}
+      </div>
+      <div class="pt-grid">${pcaItems}</div>
+    </div>
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Structured Observations</div>
+        ${soChip}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${soItems}</div>
+    </div>`;
 }
 function updateMarking(idx, val) {
   DB.learners[cMark].progress[idx] = val;
@@ -557,8 +711,19 @@ async function addLearner() {
   if (!name || !cohort) { alert("Enter name and cohort."); return; }
   const masterLabels = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
   const timetable = masterLabels.map((m, i) => ({ label: m.label, reqs: m.reqs, date: rawDates[i] ? rawDates[i].trim() : "" }));
-  const masterACS = type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
-  const newLearner = { name, cohort, type, lastMarked: 0, acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'), timetable: timetable, pdp: {}, ...(type==='ohe'?{patientTypes:{adolescent:false,adult:false,elderly:false,pregnant:false,preSchool:false,primarySchool:false,specialNeeds:false}}:{}) };
+  const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
+  const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = false; });
+  const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = false; });
+  const newLearner = {
+    name, cohort, type, lastMarked: 0,
+    acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'),
+    timetable, pdp: {},
+    ...(type === 'ohe' ? {
+      patientTypes: { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false },
+      pcas: ohePcas,
+      sos: oheSos
+    } : {})
+  };
   DB.learners.push(newLearner);
   await save();
   document.getElementById('add-msg').innerHTML = "✅ Added!";
@@ -786,27 +951,73 @@ function exportPDF(idx) {
   // ── New page if needed
   if (y > 210) { doc.addPage(); y = 20; }
 
-  // ── AC Progress
-  doc.setFontSize(12); doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...INK);
-  doc.text('Assessment Criteria Progress', 20, y); y += 4;
-
-  doc.autoTable({
-    startY: y,
-    head: [['Unit', 'Reference', 'Qty', 'Status']],
-    body: l.acs.map((ac, i) => [ubdgLabel(ac.unit), ac.ref, String(ac.n || 1), l.progress[i] || 'Not started']),
-    styles: { fontSize: 8.5, cellPadding: 3, textColor: INK },
-    headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 28 }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 46 } },
-    alternateRowStyles: { fillColor: [250, 249, 247] },
-    didParseCell: d => {
-      if (d.column.index === 3 && d.section === 'body') {
-        if (d.cell.raw === 'Completed')          d.cell.styles.textColor = TEAL;
-        else if (d.cell.raw === 'Requires amendments') d.cell.styles.textColor = AMBER;
-      }
-    },
-    margin: { left: 20, right: 20 }
-  });
+  // ── Progress detail (AC table for Diploma, PCAs + SOs for OHE)
+  if (l.type === 'ohe') {
+    const pcas = l.pcas || {};
+    const sos  = l.sos  || {};
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('PCAs', 20, y); y += 4;
+    doc.autoTable({
+      startY: y,
+      head: [['', 'PCA', 'Status']],
+      body: OHE_PCAS.map((p, i) => [pcas[p.key] ? '✓' : '○', `PCA ${i+1} – ${p.label}`, pcas[p.key] ? 'Completed' : 'Not yet completed']),
+      styles: { fontSize: 9, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 46 } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if (d.column.index === 0 && d.section === 'body') {
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : RED;
+          d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
+        }
+        if (d.column.index === 2 && d.section === 'body' && d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+      },
+      margin: { left: 20, right: 20 }
+    });
+    y = doc.lastAutoTable.finalY + 8;
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('Structured Observations', 20, y); y += 4;
+    doc.autoTable({
+      startY: y,
+      head: [['', 'Structured Observation', 'Status']],
+      body: OHE_SOS.map(s => [sos[s.key] ? '✓' : '○', s.label, sos[s.key] ? 'Completed' : 'Not yet completed']),
+      styles: { fontSize: 9, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 46 } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if (d.column.index === 0 && d.section === 'body') {
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : RED;
+          d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
+        }
+        if (d.column.index === 2 && d.section === 'body' && d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+      },
+      margin: { left: 20, right: 20 }
+    });
+  } else {
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('Assessment Criteria Progress', 20, y); y += 4;
+    doc.autoTable({
+      startY: y,
+      head: [['Unit', 'Reference', 'Qty', 'Status']],
+      body: l.acs.map((ac, i) => [ubdgLabel(ac.unit), ac.ref, String(ac.n || 1), l.progress[i] || 'Not started']),
+      styles: { fontSize: 8.5, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 28 }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 46 } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if (d.column.index === 3 && d.section === 'body') {
+          if (d.cell.raw === 'Completed')               d.cell.styles.textColor = TEAL;
+          else if (d.cell.raw === 'Requires amendments') d.cell.styles.textColor = AMBER;
+        }
+      },
+      margin: { left: 20, right: 20 }
+    });
+  }
 
   // ── OHE Patient Types
   if (l.type === 'ohe') {
