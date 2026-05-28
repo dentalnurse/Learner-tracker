@@ -651,7 +651,7 @@ function renderTimetable() {
   const el = document.getElementById('tab-timetable');
   const l = DB.learners[cTT];
   if(!l) { el.innerHTML = '<div class="empty">No learners found.</div>'; return; }
-  const rows = l.timetable.map((t, i) => `<tr><td style="text-align:center; font-weight:bold; color:var(--ink3); width:60px;">${i + 1}</td><td style="width:45%"><div style="font-weight:600;">${t.label}</div><div style="font-size:11px; color:var(--ink3); line-height:1.4;">${t.reqs||''}</div></td><td><input type="text" class="tt-edit-input" style="width:100%" value="${t.date||''}" onchange="DB.learners[${cTT}].timetable[${i}].date=this.value;save();"></td></tr>`).join('');
+  const rows = l.timetable.map((t, i) => `<tr><td style="text-align:center; font-weight:bold; color:var(--ink3); width:60px;">${i + 1}</td><td style="width:45%"><div style="font-weight:600;">${t.label}</div><div style="font-size:11px; color:var(--ink3); line-height:1.4;">${t.reqs||''}</div></td><td><input type="text" class="tt-edit-input" style="width:100%" value="${t.date||''}" oninput="DB.learners[${cTT}].timetable[${i}].date=this.value;ttMarkDirty()"></td></tr>`).join('');
   el.innerHTML = `
     <div class="page-header"><div class="page-title">Timetable</div></div>
     <div class="learner-bar" id="tt-btns"></div>
@@ -665,7 +665,13 @@ function renderTimetable() {
       <div id="tt-tt-status" class="tt-upload-status" style="display:none"></div>
       <div style="margin-top:8px;font-size:11px;color:var(--ink3);">Dates are matched to units in order. Format: <strong>15 Jan 2026</strong> or <strong>15/01/2026</strong>. Existing dates will be overwritten.</div>
     </div>
-    <div class="table-card"><table class="tbl"><thead><tr><th style="width:60px; text-align:center;">ID</th><th>Unit</th><th>Target Date</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div class="table-card">
+      <table class="tbl"><thead><tr><th style="width:60px; text-align:center;">ID</th><th>Unit</th><th>Target Date</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="padding:16px 20px;border-top:1px solid var(--cream2);display:flex;align-items:center;gap:14px;">
+        <button class="btn-save" onclick="saveTimetableDates()">Save dates</button>
+        <span id="tt-save-msg" style="font-size:13px;color:var(--ink3);"></span>
+      </div>
+    </div>`;
   learnerBar('tt-btns', cTT, 'selectTT');
   const zone = document.getElementById('tt-tt-zone');
   if (zone) {
@@ -673,6 +679,22 @@ function renderTimetable() {
     zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dragover'); });
     zone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('dragover'); parseTTDocx(e.dataTransfer?.files?.[0], 'tt'); });
   }
+}
+
+function ttMarkDirty() {
+  const msg = document.getElementById('tt-save-msg');
+  if (msg) msg.textContent = 'Unsaved changes';
+}
+function saveTimetableDates() {
+  const msg = document.getElementById('tt-save-msg');
+  if (msg) msg.textContent = 'Saving…';
+  save().then(() => {
+    if (msg) {
+      msg.style.color = 'var(--teal)';
+      msg.textContent = '✓ Saved';
+      setTimeout(() => { if (msg) { msg.textContent = ''; msg.style.color = 'var(--ink3)'; } }, 2500);
+    }
+  });
 }
 
 function renderCourses() {
