@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <link rel="stylesheet" href="style.css">
@@ -64,7 +65,10 @@
       Edit learner
     </button>
   </div>
-  <div class="sidebar-foot">dentalnurse.training</div>
+  <div class="sidebar-foot">
+    dentalnurse.training
+    <button class="auth-signout" onclick="signOutUser()">Sign out</button>
+  </div>
 </nav>
 
 <main class="main">
