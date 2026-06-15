@@ -367,8 +367,10 @@ function renderDashboard() {
 
   const onTrack = calculateOnTrack(l);
   const trackLabels = { 'on-track': ['On Track','risk-on'], 'watch': ['Watch','risk-watch'], 'at-risk': ['At Risk','risk-at'] };
+  const hasDates = (l.timetable || []).some(t => t.date && t.date.trim());
   const [trackText, trackCls] = onTrack ? trackLabels[onTrack] : ['No dates set', ''];
-  const onTrackChip = `<span class="risk-chip ${trackCls}" style="${!onTrack?'background:var(--cream2);color:var(--ink3)':''}">${trackText}</span>`;
+  const onTrackDisplay = onTrack ? trackText : hasDates ? 'Upcoming' : 'No dates set';
+  const onTrackChip = `<span class="risk-chip ${trackCls}" style="${!onTrack?'background:var(--cream2);color:var(--ink3)':''}">${onTrackDisplay}</span>`;
   const pbColor = pct >= 75 ? '' : pct >= 40 ? 'amber' : 'red';
 
   const pdpDashHtml = l.type === 'ohe' ? '' : (() => {
@@ -913,7 +915,8 @@ function exportPDF(idx) {
   const done = l.progress.filter(s => s === 'Completed').length;
   const pct  = l.acs.length ? Math.round((done / l.acs.length) * 100) : 0;
   const onTrack = calculateOnTrack(l);
-  const trackText = onTrack === 'on-track' ? 'On Track' : onTrack === 'watch' ? 'Watch' : onTrack === 'at-risk' ? 'At Risk' : 'No dates set';
+  const hasDates = (l.timetable || []).some(t => t.date && t.date.trim());
+  const trackText = onTrack === 'on-track' ? 'On Track' : onTrack === 'watch' ? 'Watch' : onTrack === 'at-risk' ? 'At Risk' : hasDates ? 'Upcoming' : 'No dates set';
   const today = new Date(); today.setHours(0,0,0,0);
   const genDate = new Date().toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'});
 
