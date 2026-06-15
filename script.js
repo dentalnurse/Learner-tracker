@@ -188,10 +188,11 @@ function getTimetableStatus(l, ttIndex) {
   if (l.type === 'ohe') {
     const reqs = OHE_PHASE_REQS[label];
     if (!reqs) return null; // Phase 1 Theory, Exam – nothing tracked
-    const pcasDone = OHE_PCAS.filter(p => !!(l.pcas || {})[p.key]).length;
-    const sosDone  = OHE_SOS.filter(s => !!(l.sos  || {})[s.key]).length;
+    const pcasDone   = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'completed').length;
+    const pcasInProg = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'in_progress').length;
+    const sosDone    = OHE_SOS.filter(s => !!(l.sos  || {})[s.key]).length;
     if (pcasDone >= reqs.pcas && sosDone >= reqs.sos) return 'Complete';
-    if (pcasDone > 0 || sosDone > 0) return 'In Progress';
+    if (pcasDone > 0 || sosDone > 0 || pcasInProg > 0) return 'In Progress';
     return 'Not Complete';
   }
 
@@ -301,13 +302,14 @@ function initialFirebaseLoad() {
         if (l.type === 'ohe' && !l.patientTypes) {
           l.patientTypes = { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false };
         }
-        if (l.type === 'ohe' && !l.pcas) {
-          l.pcas = {};
-          OHE_PCAS.forEach(p => { l.pcas[p.key] = false; });
-        }
-        if (l.type === 'ohe' && !l.sos) {
-          l.sos = {};
-          OHE_SOS.forEach(s => { l.sos[s.key] = false; });
+        if (l.type === 'ohe') {
+          if (!l.pcas) l.pcas = {};
+          OHE_PCAS.forEach(p => {
+            if (l.pcas[p.key] === true)  l.pcas[p.key] = 'completed';
+            else if (!l.pcas[p.key] || l.pcas[p.key] === false) l.pcas[p.key] = 'not_started';
+          });
+          if (!l.sos) l.sos = {};
+          OHE_SOS.forEach(s => { if (l.sos[s.key] === undefined) l.sos[s.key] = false; });
         }
         if (!l.pdp) l.pdp = {};
         if (l.type !== 'ohe') syncLearnerToMaster(l);
@@ -547,64 +549,73 @@ function togglePatientType(learnerIdx, key) {
 function getOHEProgress(l) {
   const pcas = l.pcas || {};
   const sos  = l.sos  || {};
-  const pcaDone = OHE_PCAS.filter(p => pcas[p.key]).length;
-  const sosDone = OHE_SOS.filter(s => sos[s.key]).length;
+  const pcaDone   = OHE_PCAS.filter(p => pcas[p.key] === 'completed').length;
+  const pcaInProg = OHE_PCAS.filter(p => pcas[p.key] === 'in_progress').length;
+  const sosDone   = OHE_SOS.filter(s => sos[s.key]).length;
   const total = OHE_PCAS.length + OHE_SOS.length; // 14
   const pct = Math.round(((pcaDone + sosDone) / total) * 100);
-  return { pcaDone, sosDone, total, pct };
+  return { pcaDone, pcaInProg, sosDone, total, pct };
 }
 
 function togglePCA(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.pcas) l.pcas = {};
-  l.pcas[key] = !l.pcas[key];
-  if (l.pcas[key]) { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
+  const curr = l.pcas[key] || 'not_started';
+  const next = curr === 'not_started' ? 'in_progress' : curr === 'in_progress' ? 'completed' : 'not_started';
+  l.pcas[key] = next;
+  if (next === 'completed') { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
   save().then(() => renderMarking());
 }
 
 function toggleSO(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.sos) l.sos = {};
-  const idx = OHE_SOS.findIndex(s => s.key === key);
-  if (idx > 0 && !l.sos[OHE_SOS[idx - 1].key]) return; // previous not done — blocked
   l.sos[key] = !l.sos[key];
-  // Unticking cascades: also untick all subsequent SOs
-  if (!l.sos[key]) {
-    for (let i = idx + 1; i < OHE_SOS.length; i++) l.sos[OHE_SOS[i].key] = false;
-  } else {
-    l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked');
-  }
+  if (l.sos[key]) { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
   save().then(() => renderMarking());
 }
 
 function oheSectionsHtml(l, learnerIdx, interactive) {
   const pcas = l.pcas || {};
   const sos  = l.sos  || {};
-  const pcaDone = OHE_PCAS.filter(p => pcas[p.key]).length;
-  const sosDone = OHE_SOS.filter(s => sos[s.key]).length;
+  const pcaDone   = OHE_PCAS.filter(p => pcas[p.key] === 'completed').length;
+  const sosDone   = OHE_SOS.filter(s => sos[s.key]).length;
 
-  const pcaItems = OHE_PCAS.map(p => interactive ? `
-    <label class="pt-check ${pcas[p.key] ? 'checked' : ''}">
-      <input type="checkbox" ${pcas[p.key] ? 'checked' : ''} onchange="togglePCA(${learnerIdx},'${p.key}')">
-      <div class="pt-check-text"><div class="pt-check-label">${p.label}</div></div>
-    </label>` : `
-    <div class="pt-item ${pcas[p.key] ? 'pt-done' : 'pt-missing'}">
-      <span class="pt-tick">${pcas[p.key] ? '✓' : '○'}</span>${p.label}
-    </div>`).join('');
+  const pcaStateIcon  = { not_started: '○', in_progress: '↻', completed: '✓' };
+  const pcaStateSub   = { not_started: '', in_progress: 'In progress / Requires amendments', completed: 'Completed' };
 
-  const soItems = OHE_SOS.map((s, i) => {
-    const done   = !!sos[s.key];
-    const locked = i > 0 && !sos[OHE_SOS[i - 1].key];
+  const pcaItems = OHE_PCAS.map(p => {
+    const state = pcas[p.key] || 'not_started';
+    if (interactive) {
+      const cls = state === 'completed' ? 'checked' : state === 'in_progress' ? 'in-progress' : '';
+      return `
+        <div class="pt-check ${cls}" onclick="togglePCA(${learnerIdx},'${p.key}')" style="cursor:pointer;">
+          <span class="pca-state-icon">${pcaStateIcon[state]}</span>
+          <div class="pt-check-text">
+            <div class="pt-check-label">${p.label}</div>
+            ${pcaStateSub[state] ? `<div class="pt-check-sub">${pcaStateSub[state]}</div>` : ''}
+          </div>
+        </div>`;
+    } else {
+      const itemCls = state === 'completed' ? 'pt-done' : state === 'in_progress' ? 'pt-inprog' : 'pt-missing';
+      return `
+        <div class="pt-item ${itemCls}">
+          <span class="pt-tick">${pcaStateIcon[state]}</span>${p.label}
+        </div>`;
+    }
+  }).join('');
+
+  const soItems = OHE_SOS.map(s => {
+    const done = !!sos[s.key];
     return interactive ? `
-      <label class="pt-check ${done ? 'checked' : ''} ${locked ? 'so-locked' : ''}">
-        <input type="checkbox" ${done ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="toggleSO(${learnerIdx},'${s.key}')">
+      <label class="pt-check ${done ? 'checked' : ''}">
+        <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleSO(${learnerIdx},'${s.key}')">
         <div class="pt-check-text">
-          <div class="pt-check-label">${locked ? '🔒 ' : ''}${s.label}</div>
-          ${locked ? `<div class="pt-check-sub">Complete ${OHE_SOS[i-1].label} first</div>` : ''}
+          <div class="pt-check-label">${s.label}</div>
         </div>
       </label>` : `
       <div class="pt-item ${done ? 'pt-done' : 'pt-missing'}">
-        <span class="pt-tick">${done ? '✓' : locked ? '🔒' : '○'}</span>${s.label}
+        <span class="pt-tick">${done ? '✓' : '○'}</span>${s.label}
       </div>`;
   }).join('');
 
@@ -623,7 +634,7 @@ function oheSectionsHtml(l, learnerIdx, interactive) {
     </div>
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Structured Observations</div>
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Supplementary Outcomes</div>
         ${soChip}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">${soItems}</div>
@@ -737,7 +748,7 @@ async function addLearner() {
   const masterLabels = type === 'ohe' ? OHE_TT_LABELS : DIPLOMA_TT_LABELS;
   const timetable = masterLabels.map((m, i) => ({ label: m.label, reqs: m.reqs, date: rawDates[i] ? rawDates[i].trim() : "" }));
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
-  const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = false; });
+  const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
   const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = false; });
   const newLearner = {
     name, cohort, type, lastMarked: 0,
@@ -986,17 +997,20 @@ function exportPDF(idx) {
     doc.autoTable({
       startY: y,
       head: [['', 'PCA', 'Status']],
-      body: OHE_PCAS.map((p, i) => [pcas[p.key] ? '✓' : '○', `PCA ${i+1} – ${p.label}`, pcas[p.key] ? 'Completed' : 'Not yet completed']),
+      body: OHE_PCAS.map((p, i) => { const st = pcas[p.key] || 'not_started'; return [st === 'completed' ? '✓' : st === 'in_progress' ? '~' : '○', `PCA ${i+1} – ${p.label}`, st === 'completed' ? 'Completed' : st === 'in_progress' ? 'In progress' : 'Not yet completed']; }),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
       columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 46 } },
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if (d.column.index === 0 && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : RED;
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : d.cell.raw === '~' ? [180,120,0] : RED;
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
         }
-        if (d.column.index === 2 && d.section === 'body' && d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+        if (d.column.index === 2 && d.section === 'body') {
+          if (d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+          else if (d.cell.raw === 'In progress') d.cell.styles.textColor = [180,120,0];
+        }
       },
       margin: { left: 20, right: 20 }
     });
@@ -1004,10 +1018,10 @@ function exportPDF(idx) {
     if (y > 230) { doc.addPage(); y = 20; }
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.setTextColor(...INK);
-    doc.text('Structured Observations', 20, y); y += 4;
+    doc.text('Supplementary Outcomes', 20, y); y += 4;
     doc.autoTable({
       startY: y,
-      head: [['', 'Structured Observation', 'Status']],
+      head: [['', 'Supplementary Outcome', 'Status']],
       body: OHE_SOS.map(s => [sos[s.key] ? '✓' : '○', s.label, sos[s.key] ? 'Completed' : 'Not yet completed']),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
