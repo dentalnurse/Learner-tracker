@@ -73,11 +73,13 @@ const OHE_SOS = [
 ];
 // Cumulative counts required by each phase's target date (any PCAs, not specific ones)
 const OHE_PHASE_REQS = {
-  'Phase 2 – PCAs 1–3':   { pcas: 3,  sos: 0 },
-  'Phase 3 – PCAs 4–6':   { pcas: 6,  sos: 0 },
-  'Phase 4 – PCAs 7–9':   { pcas: 9,  sos: 0 },
-  'Phase 5 – PCAs 10–11': { pcas: 11, sos: 0 },
-  'Phase 6 – SOs':         { pcas: 11, sos: 3 },
+  'Phase 2 – PCAs 1–3':      { pcas: 3,  sos: 0 },
+  'Phase 3 – PCAs 4–6':      { pcas: 6,  sos: 0 },
+  'Phase 4 – PCAs 7–9':      { pcas: 9,  sos: 0 },
+  'Phase 5 – PCAs 10–11':    { pcas: 11, sos: 0 },
+  'SO1 – Exhibition':         { soKey: 'so1' },
+  'SO2 – Reflective Account': { soKey: 'so2' },
+  'SO3 – PDP':                { soKey: 'so3' },
 };
 
 function parseDate(str) {
@@ -184,15 +186,18 @@ function unitKeyFromLabel(label) {
 function getTimetableStatus(l, ttIndex) {
   const label = (l.timetable[ttIndex] || {}).label || '';
 
-  // OHE: check cumulative PCA/SO counts against phase requirements
+  // OHE: check cumulative PCA counts or individual SO completion
   if (l.type === 'ohe') {
     const reqs = OHE_PHASE_REQS[label];
     if (!reqs) return null; // Phase 1 Theory, Exam – nothing tracked
+    if (reqs.soKey) {
+      // Individual SO row — just check whether that SO is ticked
+      return !!(l.sos || {})[reqs.soKey] ? 'Complete' : 'Not Complete';
+    }
     const pcasDone   = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'completed').length;
     const pcasInProg = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'in_progress').length;
-    const sosDone    = OHE_SOS.filter(s => !!(l.sos  || {})[s.key]).length;
-    if (pcasDone >= reqs.pcas && sosDone >= reqs.sos) return 'Complete';
-    if (pcasDone > 0 || sosDone > 0 || pcasInProg > 0) return 'In Progress';
+    if (pcasDone >= reqs.pcas) return 'Complete';
+    if (pcasDone > 0 || pcasInProg > 0) return 'In Progress';
     return 'Not Complete';
   }
 
@@ -259,9 +264,14 @@ const DIPLOMA_TT_LABELS = [
 ];
 
 const OHE_TT_LABELS = [
-  {label:'Phase 1 – Theory',reqs:''}, {label:'Phase 2 – PCAs 1–3',reqs:''},
-  {label:'Phase 3 – PCAs 4–6',reqs:''}, {label:'Phase 4 – PCAs 7–9',reqs:''},
-  {label:'Phase 5 – PCAs 10–11',reqs:''}, {label:'Phase 6 – SOs',reqs:''},
+  {label:'Phase 1 – Theory',reqs:''},
+  {label:'Phase 2 – PCAs 1–3',reqs:''},
+  {label:'Phase 3 – PCAs 4–6',reqs:''},
+  {label:'Phase 4 – PCAs 7–9',reqs:''},
+  {label:'Phase 5 – PCAs 10–11',reqs:''},
+  {label:'SO1 – Exhibition',reqs:''},
+  {label:'SO2 – Reflective Account',reqs:''},
+  {label:'SO3 – PDP',reqs:''},
   {label:'Exam',reqs:''}
 ];
 
