@@ -67,19 +67,24 @@ const OHE_PCAS = [
   { key: 'pca11', label: 'Care of Orthodontic Appliances' },
 ];
 const OHE_SOS = [
-  { key: 'so1', label: 'SO1 – Exhibition' },
-  { key: 'so2', label: 'SO2 – Reflective Account' },
-  { key: 'so3', label: 'SO3 – PDP' },
+  { key: 'so1',       label: 'SO1 – Exhibition' },
+  { key: 'so2a',      label: 'SO2 Part 1 – Reflective Account (start of course)' },
+  { key: 'so2b',      label: 'SO2 Part 2 – Reflective Account (end of course)' },
+  { key: 'so3',       label: 'SO3 – PDP' },
+  { key: 'caseStudy', label: 'Case Study' },
+  { key: 'pdpSent',   label: 'PDP & CPD log sent to assessor' },
 ];
 // Cumulative counts required by each phase's target date (any PCAs, not specific ones)
 const OHE_PHASE_REQS = {
-  'Phase 2 – PCAs 1–3':      { pcas: 3,  sos: 0 },
-  'Phase 3 – PCAs 4–6':      { pcas: 6,  sos: 0 },
-  'Phase 4 – PCAs 7–9':      { pcas: 9,  sos: 0 },
-  'Phase 5 – PCAs 10–11':    { pcas: 11, sos: 0 },
-  'SO1 – Exhibition':         { soKey: 'so1' },
-  'SO2 – Reflective Account': { soKey: 'so2' },
-  'SO3 – PDP':                { soKey: 'so3' },
+  'Phase 2 – PCAs 1–3':               { pcas: 3  },
+  'Phase 3 – PCAs 4–6':               { pcas: 6  },
+  'Phase 4 – PCAs 7–9':               { pcas: 9  },
+  'Phase 5 – PCAs 10–11':             { pcas: 11 },
+  'SO1 – Exhibition':                  { soKey: 'so1'       },
+  'SO2 Part 1 – Reflective Account':   { soKey: 'so2a'      },
+  'SO2 Part 2 – Reflective Account':   { soKey: 'so2b'      },
+  'SO3 – PDP':                         { soKey: 'so3'       },
+  'Case Study':                        { soKey: 'caseStudy' },
 };
 
 function parseDate(str) {
@@ -270,8 +275,10 @@ const OHE_TT_LABELS = [
   {label:'Phase 4 – PCAs 7–9',reqs:''},
   {label:'Phase 5 – PCAs 10–11',reqs:''},
   {label:'SO1 – Exhibition',reqs:''},
-  {label:'SO2 – Reflective Account',reqs:''},
+  {label:'SO2 Part 1 – Reflective Account',reqs:''},
+  {label:'SO2 Part 2 – Reflective Account',reqs:''},
   {label:'SO3 – PDP',reqs:''},
+  {label:'Case Study',reqs:''},
   {label:'Exam',reqs:''}
 ];
 
@@ -319,6 +326,11 @@ function initialFirebaseLoad() {
             else if (!l.pcas[p.key] || l.pcas[p.key] === false) l.pcas[p.key] = 'not_started';
           });
           if (!l.sos) l.sos = {};
+          // Migrate old single so2 → so2a + so2b
+          if (l.sos.so2 !== undefined) {
+            if (l.sos.so2a === undefined) l.sos.so2a = l.sos.so2;
+            if (l.sos.so2b === undefined) l.sos.so2b = false;
+          }
           OHE_SOS.forEach(s => { if (l.sos[s.key] === undefined) l.sos[s.key] = false; });
         }
         if (!l.pdp) l.pdp = {};
@@ -359,10 +371,10 @@ function renderDashboard() {
     const op = getOHEProgress(l);
     done = op.pcaDone + op.sosDone;
     pct  = op.pct;
-    progressLabel = `${op.pcaDone} of 11 PCAs · ${op.sosDone} of 3 SOs completed`;
+    progressLabel = `${op.pcaDone} of ${OHE_PCAS.length} PCAs · ${op.sosDone} of ${OHE_SOS.length} submissions completed`;
     statsHtml = `
-      <div class="stat-card"><div class="stat-label">PCAs</div><div class="stat-value">${op.pcaDone}/11</div></div>
-      <div class="stat-card"><div class="stat-label">SOs</div><div class="stat-value">${op.sosDone}/3</div></div>`;
+      <div class="stat-card"><div class="stat-label">PCAs</div><div class="stat-value">${op.pcaDone}/${OHE_PCAS.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Submissions</div><div class="stat-value">${op.sosDone}/${OHE_SOS.length}</div></div>`;
     bottomHtml = oheSectionsHtml(l, cDash, false);
   } else {
     done = l.progress.filter(s => s === 'Completed').length;
@@ -632,9 +644,10 @@ function oheSectionsHtml(l, learnerIdx, interactive) {
   }).join('');
 
   const pcaChip = `<span class="risk-chip ${pcaDone === 11 ? 'risk-on' : pcaDone >= 6 ? 'risk-watch' : 'risk-at'}">${pcaDone}/11 completed</span>`;
-  const soChip  = sosDone === 3 ? `<span class="risk-chip risk-on">3/3 completed</span>` :
-                  sosDone > 0   ? `<span class="risk-chip risk-watch">${sosDone}/3 completed</span>` :
-                                  `<span class="risk-chip" style="background:var(--cream2);color:var(--ink3)">0/3 completed</span>`;
+  const soTotal = OHE_SOS.length;
+  const soChip  = sosDone === soTotal ? `<span class="risk-chip risk-on">${soTotal}/${soTotal} completed</span>` :
+                  sosDone > 0         ? `<span class="risk-chip risk-watch">${sosDone}/${soTotal} completed</span>` :
+                                        `<span class="risk-chip" style="background:var(--cream2);color:var(--ink3)">0/${soTotal} completed</span>`;
 
   return `
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
@@ -761,7 +774,7 @@ async function addLearner() {
   const timetable = masterLabels.map((m, i) => ({ label: m.label, reqs: m.reqs, date: rawDates[i] ? rawDates[i].trim() : "" }));
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
-  const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = false; });
+  const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = false; }); // includes so2a, so2b, caseStudy, pdpSent
   const newLearner = {
     name, cohort, type, lastMarked: 0,
     acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'),
