@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "learner-tracker",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/emilywickes/Desktop/Learner-tracker-main/.claude/serve.py"],
+      "port": 8099
+    },
+    {
+      "name": "booking-page",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8100"],
+      "port": 8100
+    },
+    {
+      "name": "course-platform",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/emilywickes/Desktop/course-platform", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
