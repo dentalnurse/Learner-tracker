@@ -196,8 +196,10 @@ function getTimetableStatus(l, ttIndex) {
     const reqs = OHE_PHASE_REQS[label];
     if (!reqs) return null; // Phase 1 Theory, Exam – nothing tracked
     if (reqs.soKey) {
-      // Individual SO row — just check whether that SO is ticked
-      return !!(l.sos || {})[reqs.soKey] ? 'Complete' : 'Not Complete';
+      const st = (l.sos || {})[reqs.soKey] || 'not_started';
+      if (st === 'completed') return 'Complete';
+      if (st === 'in_progress') return 'In Progress';
+      return 'Not Complete';
     }
     const pcasDone   = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'completed').length;
     const pcasInProg = OHE_PCAS.filter(p => (l.pcas || {})[p.key] === 'in_progress').length;
@@ -328,10 +330,14 @@ function initialFirebaseLoad() {
           if (!l.sos) l.sos = {};
           // Migrate old single so2 → so2a + so2b
           if (l.sos.so2 !== undefined) {
-            if (l.sos.so2a === undefined) l.sos.so2a = l.sos.so2;
-            if (l.sos.so2b === undefined) l.sos.so2b = false;
+            if (l.sos.so2a === undefined) l.sos.so2a = l.sos.so2 === true ? 'completed' : 'not_started';
+            if (l.sos.so2b === undefined) l.sos.so2b = 'not_started';
           }
-          OHE_SOS.forEach(s => { if (l.sos[s.key] === undefined) l.sos[s.key] = false; });
+          // Migrate booleans to 3-state strings and init missing keys
+          OHE_SOS.forEach(s => {
+            if (l.sos[s.key] === true)  l.sos[s.key] = 'completed';
+            else if (!l.sos[s.key] || l.sos[s.key] === false) l.sos[s.key] = 'not_started';
+          });
         }
         if (!l.pdp) l.pdp = {};
         if (l.type !== 'ohe') syncLearnerToMaster(l);
@@ -575,10 +581,11 @@ function getOHEProgress(l) {
   const sos  = l.sos  || {};
   const pcaDone   = OHE_PCAS.filter(p => pcas[p.key] === 'completed').length;
   const pcaInProg = OHE_PCAS.filter(p => pcas[p.key] === 'in_progress').length;
-  const sosDone   = OHE_SOS.filter(s => sos[s.key]).length;
-  const total = OHE_PCAS.length + OHE_SOS.length; // 14
+  const sosDone   = OHE_SOS.filter(s => sos[s.key] === 'completed').length;
+  const sosInProg = OHE_SOS.filter(s => sos[s.key] === 'in_progress').length;
+  const total = OHE_PCAS.length + OHE_SOS.length;
   const pct = Math.round(((pcaDone + sosDone) / total) * 100);
-  return { pcaDone, pcaInProg, sosDone, total, pct };
+  return { pcaDone, pcaInProg, sosDone, sosInProg, total, pct };
 }
 
 function togglePCA(learnerIdx, key) {
@@ -594,8 +601,10 @@ function togglePCA(learnerIdx, key) {
 function toggleSO(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.sos) l.sos = {};
-  l.sos[key] = !l.sos[key];
-  if (l.sos[key]) { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
+  const curr = l.sos[key] || 'not_started';
+  const next = curr === 'not_started' ? 'in_progress' : curr === 'in_progress' ? 'completed' : 'not_started';
+  l.sos[key] = next;
+  if (next === 'completed') { l.lastMarked = Date.now(); recordMarking(learnerIdx, 'marked'); }
   save().then(() => renderMarking());
 }
 
@@ -603,7 +612,7 @@ function oheSectionsHtml(l, learnerIdx, interactive) {
   const pcas = l.pcas || {};
   const sos  = l.sos  || {};
   const pcaDone   = OHE_PCAS.filter(p => pcas[p.key] === 'completed').length;
-  const sosDone   = OHE_SOS.filter(s => sos[s.key]).length;
+  const sosDone   = OHE_SOS.filter(s => sos[s.key] === 'completed').length;
 
   const pcaStateIcon  = { not_started: '○', in_progress: '↻', completed: '✓' };
   const pcaStateSub   = { not_started: '', in_progress: 'In progress / Requires amendments', completed: 'Completed' };
@@ -629,18 +638,28 @@ function oheSectionsHtml(l, learnerIdx, interactive) {
     }
   }).join('');
 
+  const soStateIcon = { not_started: '○', in_progress: '↻', completed: '✓' };
+  const soStateSub  = { not_started: '', in_progress: 'In progress / Requires amendments', completed: 'Completed' };
+
   const soItems = OHE_SOS.map(s => {
-    const done = !!sos[s.key];
-    return interactive ? `
-      <label class="pt-check ${done ? 'checked' : ''}">
-        <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleSO(${learnerIdx},'${s.key}')">
-        <div class="pt-check-text">
-          <div class="pt-check-label">${s.label}</div>
-        </div>
-      </label>` : `
-      <div class="pt-item ${done ? 'pt-done' : 'pt-missing'}">
-        <span class="pt-tick">${done ? '✓' : '○'}</span>${s.label}
-      </div>`;
+    const state = sos[s.key] || 'not_started';
+    if (interactive) {
+      const cls = state === 'completed' ? 'checked' : state === 'in_progress' ? 'in-progress' : '';
+      return `
+        <div class="pt-check ${cls}" onclick="toggleSO(${learnerIdx},'${s.key}')" style="cursor:pointer;">
+          <span class="pca-state-icon">${soStateIcon[state]}</span>
+          <div class="pt-check-text">
+            <div class="pt-check-label">${s.label}</div>
+            ${soStateSub[state] ? `<div class="pt-check-sub">${soStateSub[state]}</div>` : ''}
+          </div>
+        </div>`;
+    } else {
+      const itemCls = state === 'completed' ? 'pt-done' : state === 'in_progress' ? 'pt-inprog' : 'pt-missing';
+      return `
+        <div class="pt-item ${itemCls}">
+          <span class="pt-tick">${soStateIcon[state]}</span>${s.label}
+        </div>`;
+    }
   }).join('');
 
   const pcaChip = `<span class="risk-chip ${pcaDone === 11 ? 'risk-on' : pcaDone >= 6 ? 'risk-watch' : 'risk-at'}">${pcaDone}/11 completed</span>`;
@@ -774,7 +793,7 @@ async function addLearner() {
   const timetable = masterLabels.map((m, i) => ({ label: m.label, reqs: m.reqs, date: rawDates[i] ? rawDates[i].trim() : "" }));
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
-  const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = false; }); // includes so2a, so2b, caseStudy, pdpSent
+  const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = 'not_started'; });
   const newLearner = {
     name, cohort, type, lastMarked: 0,
     acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'),
@@ -935,8 +954,17 @@ function exportPDF(idx) {
   const AMBER  = [180, 83, 9];
   const RED    = [190, 18, 60];
 
-  const done = l.progress.filter(s => s === 'Completed').length;
-  const pct  = l.acs.length ? Math.round((done / l.acs.length) * 100) : 0;
+  let done, pct, completedOf;
+  if (l.type === 'ohe') {
+    const op = getOHEProgress(l);
+    done = op.pcaDone + op.sosDone;
+    pct  = op.pct;
+    completedOf = `${done} / ${OHE_PCAS.length + OHE_SOS.length}`;
+  } else {
+    done = l.progress.filter(s => s === 'Completed').length;
+    pct  = l.acs.length ? Math.round((done / l.acs.length) * 100) : 0;
+    completedOf = `${done} / ${l.acs.length}`;
+  }
   const onTrack = calculateOnTrack(l);
   const hasDates = (l.timetable || []).some(t => t.date && t.date.trim());
   const trackText = onTrack === 'on-track' ? 'On Track' : onTrack === 'watch' ? 'Watch' : onTrack === 'at-risk' ? 'At Risk' : hasDates ? 'Upcoming' : 'No dates set';
@@ -966,7 +994,7 @@ function exportPDF(idx) {
   // ── Stat boxes
   const boxes = [
     { label: 'PROGRESS', value: `${pct}%` },
-    { label: 'COMPLETED', value: `${done} / ${l.acs.length}` },
+    { label: 'COMPLETED', value: completedOf },
     { label: 'SCHEDULE', value: trackText }
   ];
   const bW = 54, bH = 18;
@@ -1023,14 +1051,14 @@ function exportPDF(idx) {
     doc.autoTable({
       startY: y,
       head: [['', 'PCA', 'Status']],
-      body: OHE_PCAS.map((p, i) => { const st = pcas[p.key] || 'not_started'; return [st === 'completed' ? '✓' : st === 'in_progress' ? '~' : '○', `PCA ${i+1} – ${p.label}`, st === 'completed' ? 'Completed' : st === 'in_progress' ? 'In progress' : 'Not yet completed']; }),
+      body: OHE_PCAS.map((p, i) => { const st = pcas[p.key] || 'not_started'; return [st === 'completed' ? '+' : st === 'in_progress' ? '~' : '-', `PCA ${i+1} – ${p.label}`, st === 'completed' ? 'Completed' : st === 'in_progress' ? 'In progress' : 'Not yet completed']; }),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
       columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 46 } },
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if (d.column.index === 0 && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : d.cell.raw === '~' ? [180,120,0] : RED;
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : d.cell.raw === '~' ? [180,120,0] : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
         }
         if (d.column.index === 2 && d.section === 'body') {
@@ -1048,17 +1076,20 @@ function exportPDF(idx) {
     doc.autoTable({
       startY: y,
       head: [['', 'Supplementary Outcome', 'Status']],
-      body: OHE_SOS.map(s => [sos[s.key] ? '✓' : '○', s.label, sos[s.key] ? 'Completed' : 'Not yet completed']),
+      body: OHE_SOS.map(s => { const st = sos[s.key] || 'not_started'; return [st === 'completed' ? '+' : st === 'in_progress' ? '~' : '-', s.label, st === 'completed' ? 'Completed' : st === 'in_progress' ? 'In progress' : 'Not yet completed']; }),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
       columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 46 } },
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if (d.column.index === 0 && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : RED;
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : d.cell.raw === '~' ? [180,120,0] : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
         }
-        if (d.column.index === 2 && d.section === 'body' && d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+        if (d.column.index === 2 && d.section === 'body') {
+          if (d.cell.raw === 'Completed') d.cell.styles.textColor = TEAL;
+          else if (d.cell.raw === 'In progress') d.cell.styles.textColor = [180,120,0];
+        }
       },
       margin: { left: 20, right: 20 }
     });
