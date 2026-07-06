@@ -348,7 +348,7 @@ function initialFirebaseLoad() {
 }
 
 // ── UI HELPERS ───────────────────────
-function isMarkedThisWeek(ts) { return ts > (Date.now() - (7 * 24 * 60 * 60 * 1000)); }
+function isMarkedThisWeek(ts) { return ts > new Date(getWeekStart()).getTime(); }
 function ubdgClass(u){ return ['SO','CS','PCA'].includes(String(u).toUpperCase()) ? `ubdg ubdg-${u.toLowerCase()}` : 'ubdg ubdg-d'; }
 function ubdgLabel(u){ return ['SO','CS','PCA'].includes(String(u).toUpperCase()) ? u : `Unit ${u}`; }
 function badge(s) {
