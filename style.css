@@ -427,6 +427,22 @@ select:focus{outline:none;border-color:var(--teal)}
 .btn-export:hover { background: var(--teal2); color: #fff; transform: translateY(-1px); }
 .btn-export:active { transform: translateY(0); }
 
+/* ── PAID BUTTON ───────────────── */
+.btn-paid {
+  padding: 7px 16px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-paid.paid-yes { border-color: var(--teal); background: var(--teal-l); color: var(--teal); }
+.btn-paid.paid-no  { border-color: var(--amber); background: var(--amber-l); color: var(--amber); }
+.btn-paid:hover { opacity: .8; transform: translateY(-1px); }
+
 /* ── OHE PATIENT TYPES — MARKING ───────────────── */
 .pt-grid {
   display: grid;

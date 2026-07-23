@@ -340,6 +340,8 @@ function initialFirebaseLoad() {
           });
         }
         if (!l.pdp) l.pdp = {};
+        if (l.completed === undefined || l.completed === null) l.completed = false;
+        if (l.paid === undefined || l.paid === null) l.paid = false;
         if (l.type !== 'ohe') syncLearnerToMaster(l);
       });
     }
@@ -360,7 +362,10 @@ function initials(n){ return n ? n.trim().split(' ').map(w=>w[0]).join('').toUpp
 function learnerBar(id, curr, fn) {
   const el = document.getElementById(id);
   if(!el || !DB.learners) return;
-  el.innerHTML = DB.learners.map((l, i) => `
+  el.innerHTML = DB.learners
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => !l.completed)
+    .map(({ l, i }) => `
     <button class="lpill ${i===curr?'active':''} ${isMarkedThisWeek(l.lastMarked)?'marked-done':''}" onclick="${fn}(${i})">
       <span class="lpill-dot"></span>${l.name}
     </button>`).join('');
@@ -369,8 +374,17 @@ function learnerBar(id, curr, fn) {
 // ── VIEWS ───────────────────────
 function renderDashboard() {
   const el = document.getElementById('tab-dashboard');
-  if (!el || !DB.learners || !DB.learners[cDash]) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  if (!el || !DB.learners || !DB.learners.length) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  if (!DB.learners[cDash] || DB.learners[cDash].completed) {
+    const fi = DB.learners.findIndex(l => !l.completed);
+    cDash = fi >= 0 ? fi : 0;
+  }
   const l = DB.learners[cDash];
+  if (!l || l.completed) {
+    el.innerHTML = `<div class="page-header"><div class="page-title">Dashboard</div></div><div class="learner-bar" id="dash-btns"></div><div class="empty" style="padding:40px;text-align:center;color:var(--ink3)">All learners are in the Completed tab.</div>`;
+    learnerBar('dash-btns', cDash, 'selectDash');
+    return;
+  }
 
   let done, pct, progressLabel, statsHtml, bottomHtml;
   if (l.type === 'ohe') {
@@ -463,7 +477,10 @@ function renderDashboard() {
   el.innerHTML = `
     <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="page-title">Dashboard</div></div>
-      <button class="btn-export" onclick="exportPDF(${cDash})">↓ Export PDF</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-export" style="border-color:var(--teal);color:var(--teal)" onclick="markComplete(${cDash})">Mark complete</button>
+        <button class="btn-export" onclick="exportPDF(${cDash})">↓ Export PDF</button>
+      </div>
     </div>
     <div class="learner-bar" id="dash-btns"></div>
     <div class="profile-card">
@@ -494,8 +511,12 @@ function renderDashboard() {
 
 function renderMarking() {
   const el = document.getElementById('tab-marking');
+  if (!DB.learners[cMark] || DB.learners[cMark].completed) {
+    const fi = DB.learners.findIndex(l => !l.completed);
+    cMark = fi >= 0 ? fi : 0;
+  }
   const l = DB.learners[cMark];
-  if(!l) { el.innerHTML = '<div class="empty">No learners yet.</div>'; return; }
+  if(!l || l.completed) { el.innerHTML = '<div class="empty">No active learners.</div>'; return; }
   const isDone = isMarkedThisWeek(l.lastMarked);
 
   let markingBodyHtml;
@@ -704,8 +725,12 @@ function markNothingToSubmit(i) {
 
 function renderTimetable() {
   const el = document.getElementById('tab-timetable');
+  if (!DB.learners[cTT] || DB.learners[cTT].completed) {
+    const fi = DB.learners.findIndex(l => !l.completed);
+    cTT = fi >= 0 ? fi : 0;
+  }
   const l = DB.learners[cTT];
-  if(!l) { el.innerHTML = '<div class="empty">No learners found.</div>'; return; }
+  if(!l || l.completed) { el.innerHTML = '<div class="empty">No active learners found.</div>'; return; }
   const rows = l.timetable.map((t, i) => `<tr><td style="text-align:center; font-weight:bold; color:var(--ink3); width:60px;">${i + 1}</td><td style="width:45%"><div style="font-weight:600;">${t.label}</div><div style="font-size:11px; color:var(--ink3); line-height:1.4;">${t.reqs||''}</div></td><td><input type="text" class="tt-edit-input" style="width:100%" value="${t.date||''}" oninput="DB.learners[${cTT}].timetable[${i}].date=this.value;ttMarkDirty()"></td></tr>`).join('');
   el.innerHTML = `
     <div class="page-header"><div class="page-title">Timetable</div></div>
@@ -795,7 +820,7 @@ async function addLearner() {
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
   const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = 'not_started'; });
   const newLearner = {
-    name, cohort, type, lastMarked: 0,
+    name, cohort, type, lastMarked: 0, completed: false, paid: false,
     acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'),
     timetable, pdp: {},
     ...(type === 'ohe' ? {
@@ -1167,6 +1192,71 @@ function exportPDF(idx) {
   doc.save(`${l.name.replace(/\s+/g,'_')}_Progress_Report.pdf`);
 }
 
+// ── COMPLETED & PAYMENT ───────────────────────
+function markComplete(idx) {
+  if (!confirm(`Mark ${DB.learners[idx].name} as completed? They will move to the Completed tab.`)) return;
+  DB.learners[idx].completed = true;
+  DB.learners[idx].completedDate = Date.now();
+  if (DB.learners[idx].paid === undefined) DB.learners[idx].paid = false;
+  const fi = DB.learners.findIndex((l, i) => !l.completed && i !== idx);
+  if (cDash === idx) cDash = fi >= 0 ? fi : 0;
+  if (cMark === idx) cMark = fi >= 0 ? fi : 0;
+  if (cTT  === idx) cTT  = fi >= 0 ? fi : 0;
+  save().then(() => renderDashboard());
+}
+
+function togglePaid(idx) {
+  DB.learners[idx].paid = !DB.learners[idx].paid;
+  save().then(() => renderCompleted());
+}
+
+function uncomplete(idx) {
+  if (!confirm(`Move ${DB.learners[idx].name} back to active?`)) return;
+  DB.learners[idx].completed = false;
+  save().then(() => renderCompleted());
+}
+
+function renderCompleted() {
+  const el = document.getElementById('tab-completed');
+  if (!el) return;
+  const completed = (DB.learners || []).map((l, i) => ({ l, i })).filter(({ l }) => l.completed);
+  if (!completed.length) {
+    el.innerHTML = `<div class="page-header"><div class="page-title">Completed Learners</div></div>
+      <div class="empty" style="padding:40px;text-align:center;color:var(--ink3);">No completed learners yet.<br>Mark a learner as complete from their dashboard.</div>`;
+    return;
+  }
+  const cards = completed.map(({ l, i }) => {
+    const dateStr = l.completedDate ? new Date(l.completedDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '';
+    let prog;
+    if (l.type === 'ohe') {
+      const op = getOHEProgress(l);
+      prog = `${op.pcaDone + op.sosDone} / ${op.total} (${op.pct}%)`;
+    } else {
+      const done = (l.progress||[]).filter(s => s === 'Completed').length;
+      const tot = (l.acs||[]).length;
+      prog = `${done} / ${tot} (${tot ? Math.round((done/tot)*100) : 0}%)`;
+    }
+    return `<div class="table-card" style="padding:20px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div class="avatar ${l.type==='ohe'?'ohe':''}" style="width:44px;height:44px;font-size:14px;">${initials(l.name)}</div>
+          <div>
+            <div style="font-weight:600;font-size:15px;">${l.name}</div>
+            <div style="font-size:12px;color:var(--ink3);margin-top:2px;">${l.cohort} &middot; ${l.type.toUpperCase()}${dateStr ? ` &middot; Completed ${dateStr}` : ''}</div>
+            <div style="font-size:12px;color:var(--ink3);margin-top:1px;">Progress: ${prog}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-paid ${l.paid?'paid-yes':'paid-no'}" onclick="togglePaid(${i})">${l.paid?'&#10003; Paid':'Awaiting payment'}</button>
+          <button class="btn-export" onclick="exportPDF(${i})">&#8595; PDF</button>
+          <button class="lpill" style="color:var(--ink3);border-color:var(--ink3)" onclick="uncomplete(${i})">Move to active</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="page-header"><div class="page-title">Completed Learners</div><div class="page-sub">${completed.length} learner${completed.length!==1?'s':''} completed</div></div>${cards}`;
+}
+
 // ── NAVIGATION & BOOTSTRAP ───────────────────────
 function switchTab(name, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1179,6 +1269,7 @@ function switchTab(name, btn) {
   if (name === 'timetable') renderTimetable();
   if (name === 'courses') renderCourses();
   if (name === 'edit') renderEdit();
+  if (name === 'completed') renderCompleted();
 }
 
 function selectDash(i){ cDash=i; renderDashboard(); }

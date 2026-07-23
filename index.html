@@ -64,6 +64,12 @@
       </svg>
       Edit learner
     </button>
+    <button class="nav-item" onclick="switchTab('completed',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="7"/><path d="m5 8.5 2 2 4-4"/>
+      </svg>
+      Completed
+    </button>
   </div>
   <div class="sidebar-foot">
     dentalnurse.training
@@ -72,11 +78,12 @@
 </nav>
 
 <main class="main">
-  <div id="tab-dashboard" class="view active"></div>
-  <div id="tab-marking"   class="view"></div>
-  <div id="tab-timetable" class="view"></div>
-  <div id="tab-courses"   class="view"></div>
-  <div id="tab-edit"      class="view"></div>
+  <div id="tab-dashboard"  class="view active"></div>
+  <div id="tab-marking"    class="view"></div>
+  <div id="tab-timetable"  class="view"></div>
+  <div id="tab-courses"    class="view"></div>
+  <div id="tab-edit"       class="view"></div>
+  <div id="tab-completed"  class="view"></div>
 
   <div id="tab-add" class="view">
     <div class="page-header">
