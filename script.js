@@ -489,7 +489,6 @@ function renderDashboard() {
         <div class="profile-name">${l.name} ${!isMarkedThisWeek(l.lastMarked)?'<span class="sbdg s-amend" style="margin-left:8px;font-size:10px">⚠️ MARKING REQUIRED</span>':'<span class="sbdg s-done" style="margin-left:8px;font-size:10px">✅ UP TO DATE</span>'}</div>
         <div class="profile-meta"><span>${l.cohort}</span><span class="course-tag ${l.type==='ohe'?'ohe':''}">${l.type==='ohe'?'OHE':'Diploma'}</span></div>
       </div>
-      <button class="btn-paid ${l.paid?'paid-yes':'paid-no'}" onclick="togglePaidDash(${cDash})" style="margin-left:auto;flex-shrink:0;">${l.paid?'&#10003; Paid':'Awaiting payment'}</button>
     </div>
     <div class="progress-card">
       <div class="pb-meta">
@@ -502,6 +501,7 @@ function renderDashboard() {
     <div class="stats-row">
       ${statsHtml}
       <div class="stat-card"><div class="stat-label">Schedule</div><div class="stat-value" style="font-size:${onTrack?'17px':'13px'};margin-top:${onTrack?'6px':'10px'};color:${onTrack==='on-track'?'var(--teal)':onTrack==='watch'?'var(--amber)':onTrack==='at-risk'?'var(--red)':'var(--ink3)'}">${trackText}</div><div class="stat-sub">vs timetable</div></div>
+      <div class="stat-card" style="cursor:pointer" onclick="togglePaidDash(${cDash})"><div class="stat-label">Payment</div><div class="stat-value" style="font-size:14px;margin-top:8px;color:${l.paid?'var(--teal)':'var(--amber)'}">${l.paid?'&#10003; Paid':'Pending'}</div><div class="stat-sub">tap to toggle</div></div>
     </div>
     ${ptHtml}
     ${pdpDashHtml}
