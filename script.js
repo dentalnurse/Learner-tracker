@@ -489,6 +489,7 @@ function renderDashboard() {
         <div class="profile-name">${l.name} ${!isMarkedThisWeek(l.lastMarked)?'<span class="sbdg s-amend" style="margin-left:8px;font-size:10px">⚠️ MARKING REQUIRED</span>':'<span class="sbdg s-done" style="margin-left:8px;font-size:10px">✅ UP TO DATE</span>'}</div>
         <div class="profile-meta"><span>${l.cohort}</span><span class="course-tag ${l.type==='ohe'?'ohe':''}">${l.type==='ohe'?'OHE':'Diploma'}</span></div>
       </div>
+      <button class="btn-paid ${l.paid?'paid-yes':'paid-no'}" onclick="togglePaidDash(${cDash})" style="margin-left:auto;flex-shrink:0;">${l.paid?'&#10003; Paid':'Awaiting payment'}</button>
     </div>
     <div class="progress-card">
       <div class="pb-meta">
@@ -1208,6 +1209,11 @@ function markComplete(idx) {
 function togglePaid(idx) {
   DB.learners[idx].paid = !DB.learners[idx].paid;
   save().then(() => renderCompleted());
+}
+
+function togglePaidDash(idx) {
+  DB.learners[idx].paid = !DB.learners[idx].paid;
+  save().then(() => renderDashboard());
 }
 
 function uncomplete(idx) {
