@@ -89,23 +89,26 @@ const OHE_PHASE_REQS = {
 
 // Mandatory Witness Testimonies (Diploma only). Each item is signed off across three
 // stages; three items also carry an additional-questions sub-check.
+// `key` is used as a Firebase object key, so it must not contain "." (Firebase
+// Realtime Database rejects keys with . # $ / [ ]). `ref` is the human-readable
+// DNT reference shown in the UI.
 const MWT_ITEMS = [
-  { key: '2.1a', label: 'Professionalism' },
-  { key: '2.1b', label: 'Clinical Environment', hasAdditional: true },
-  { key: '2.1c', label: 'Decontamination' },
-  { key: '2.1d', label: 'Clinical Assessment Child' },
-  { key: '2.1e', label: 'Clinical Assessment Adult', hasAdditional: true },
-  { key: '2.1f', label: 'Periodontology' },
-  { key: '2.1g', label: 'Radiography' },
-  { key: '2.1h', label: 'Restorative Procedure', hasAdditional: true },
-  { key: '2.1i', label: 'Endodontic Procedure Stage 1' },
-  { key: '2.1j', label: 'Endodontic Procedure Stage 2' },
-  { key: '2.1k', label: 'Removable Prosthetics – Impression Taking' },
-  { key: '2.1l', label: 'Removable Prosthetics – Additional Stage' },
-  { key: '2.1m', label: 'Fixed Prosthetics – Impression Taking' },
-  { key: '2.1n', label: 'Fixed Prosthetics – Fitting Stage' },
-  { key: '2.1o', label: 'Non Surgical Extraction' },
-  { key: '2.1p', label: 'Oral Health Instruction (Simulated Activity)' },
+  { key: '2_1a', ref: '2.1a', label: 'Professionalism' },
+  { key: '2_1b', ref: '2.1b', label: 'Clinical Environment', hasAdditional: true },
+  { key: '2_1c', ref: '2.1c', label: 'Decontamination' },
+  { key: '2_1d', ref: '2.1d', label: 'Clinical Assessment Child' },
+  { key: '2_1e', ref: '2.1e', label: 'Clinical Assessment Adult', hasAdditional: true },
+  { key: '2_1f', ref: '2.1f', label: 'Periodontology' },
+  { key: '2_1g', ref: '2.1g', label: 'Radiography' },
+  { key: '2_1h', ref: '2.1h', label: 'Restorative Procedure', hasAdditional: true },
+  { key: '2_1i', ref: '2.1i', label: 'Endodontic Procedure Stage 1' },
+  { key: '2_1j', ref: '2.1j', label: 'Endodontic Procedure Stage 2' },
+  { key: '2_1k', ref: '2.1k', label: 'Removable Prosthetics – Impression Taking' },
+  { key: '2_1l', ref: '2.1l', label: 'Removable Prosthetics – Additional Stage' },
+  { key: '2_1m', ref: '2.1m', label: 'Fixed Prosthetics – Impression Taking' },
+  { key: '2_1n', ref: '2.1n', label: 'Fixed Prosthetics – Fitting Stage' },
+  { key: '2_1o', ref: '2.1o', label: 'Non Surgical Extraction' },
+  { key: '2_1p', ref: '2.1p', label: 'Oral Health Instruction (Simulated Activity)' },
 ];
 function mwtIsComplete(entry) { return !!(entry && entry.witnessed && entry.reflection && entry.assessor); }
 
@@ -307,7 +310,13 @@ const OHE_TT_LABELS = [
 ];
 
 // ── SYNC & LOAD ───────────────────────
-function save() { return database.ref('backups/latest_sync').set(DB); }
+function save() {
+  return database.ref('backups/latest_sync').set(DB).catch(err => {
+    console.error('Save failed:', err);
+    alert('⚠️ Your last change was NOT saved:\n\n' + err.message);
+    throw err;
+  });
+}
 
 function syncLearnerToMaster(learner) {
   const master = learner.type === 'ohe' ? OHE_ACS_NEW : DIPLOMA_ACS;
@@ -489,7 +498,7 @@ function renderDashboard() {
         <tbody>${MWT_ITEMS.map(it => {
           const e = mwt[it.key] || {};
           return `<tr>
-            <td style="font-size:12.5px">${it.key}– ${it.label}</td>
+            <td style="font-size:12.5px">${it.ref}– ${it.label}</td>
             <td style="text-align:center"><span class="pdp-dot ${e.witnessed?'pdp-done':'pdp-open'}">${e.witnessed?'✓':''}</span></td>
             <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
             <td style="text-align:center"><span class="pdp-dot ${e.assessor?'pdp-done':'pdp-open'}">${e.assessor?'✓':''}</span></td>
@@ -664,7 +673,7 @@ function renderMarking() {
         <td style="text-align:center" colspan="3"><label class="pdp-check ${m.additionalQuestions?'checked':''}"><input type="checkbox" ${m.additionalQuestions?'checked':''} onchange="toggleMWTAdditional(${cMark},'${it.key}')"><span>${m.additionalQuestions?'✓ Done':'○'}</span></label></td>
       </tr>` : '';
       return `<tr>
-        <td style="font-size:12.5px">${it.key}– ${it.label}</td>
+        <td style="font-size:12.5px">${it.ref}– ${it.label}</td>
         <td style="text-align:center"><label class="pdp-check ${m.witnessed?'checked':''}"><input type="checkbox" ${m.witnessed?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','witnessed')"><span>${m.witnessed?'✓ Done':'○'}</span></label></td>
         <td style="text-align:center"><label class="pdp-check ${m.reflection?'checked':''}"><input type="checkbox" ${m.reflection?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','reflection')"><span>${m.reflection?'✓ Done':'○'}</span></label></td>
         <td style="text-align:center"><label class="pdp-check ${m.assessor?'checked':''}"><input type="checkbox" ${m.assessor?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','assessor')"><span>${m.assessor?'✓ Done':'○'}</span></label></td>
