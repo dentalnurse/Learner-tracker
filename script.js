@@ -87,6 +87,28 @@ const OHE_PHASE_REQS = {
   'Case Study':                        { soKey: 'caseStudy' },
 };
 
+// Mock Witness Testimonies (Diploma only). Each item is signed off across three
+// stages; three items also carry an additional-questions sub-check.
+const MWT_ITEMS = [
+  { key: '2.1a', label: 'Professionalism' },
+  { key: '2.1b', label: 'Clinical Environment', hasAdditional: true },
+  { key: '2.1c', label: 'Decontamination' },
+  { key: '2.1d', label: 'Clinical Assessment Child' },
+  { key: '2.1e', label: 'Clinical Assessment Adult', hasAdditional: true },
+  { key: '2.1f', label: 'Periodontology' },
+  { key: '2.1g', label: 'Radiography' },
+  { key: '2.1h', label: 'Restorative Procedure', hasAdditional: true },
+  { key: '2.1i', label: 'Endodontic Procedure Stage 1' },
+  { key: '2.1j', label: 'Endodontic Procedure Stage 2' },
+  { key: '2.1k', label: 'Removable Prosthetics – Impression Taking' },
+  { key: '2.1l', label: 'Removable Prosthetics – Additional Stage' },
+  { key: '2.1m', label: 'Fixed Prosthetics – Impression Taking' },
+  { key: '2.1n', label: 'Fixed Prosthetics – Fitting Stage' },
+  { key: '2.1o', label: 'Non Surgical Extraction' },
+  { key: '2.1p', label: 'Oral Health Instruction (Simulated Activity)' },
+];
+function mwtIsComplete(entry) { return !!(entry && entry.witnessed && entry.reflection && entry.assessor); }
+
 function parseDate(str) {
   if (!str || !str.trim()) return null;
   const d = new Date(str);
@@ -340,6 +362,14 @@ function initialFirebaseLoad() {
           });
         }
         if (!l.pdp) l.pdp = {};
+        if (l.type !== 'ohe') {
+          if (!l.mwt) l.mwt = {};
+          MWT_ITEMS.forEach(it => {
+            if (!l.mwt[it.key]) l.mwt[it.key] = { witnessed: false, reflection: false, assessor: false };
+            if (it.hasAdditional && !l.mwt[it.key].addl) l.mwt[it.key].addl = { na: false, learnerQ: false, assessment: false };
+          });
+          if (!l.unitPrep) l.unitPrep = {};
+        }
         if (l.completed === undefined || l.completed === null) l.completed = false;
         if (l.paid === undefined || l.paid === null) l.paid = false;
         if (l.type !== 'ohe') syncLearnerToMaster(l);
@@ -439,6 +469,47 @@ function renderDashboard() {
     </div>`;
   })();
 
+  const mwtDashHtml = l.type === 'ohe' ? '' : (() => {
+    const mwt = l.mwt || {};
+    const doneCount = MWT_ITEMS.filter(it => mwtIsComplete(mwt[it.key])).length;
+    return `<div class="table-card" style="margin-bottom:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mock Witness Testimonies (MWTs)</div>
+        <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:90px">Witnessed</th><th style="text-align:center;width:90px">Reflection</th><th style="text-align:center;width:90px">Assessor</th></tr></thead>
+        <tbody>${MWT_ITEMS.map(it => {
+          const e = mwt[it.key] || {};
+          return `<tr>
+            <td style="font-size:12.5px">${it.key}– ${it.label}</td>
+            <td style="text-align:center"><span class="pdp-dot ${e.witnessed?'pdp-done':'pdp-open'}">${e.witnessed?'✓':''}</span></td>
+            <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
+            <td style="text-align:center"><span class="pdp-dot ${e.assessor?'pdp-done':'pdp-open'}">${e.assessor?'✓':''}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  })();
+
+  const unitPrepDashHtml = l.type === 'ohe' ? '' : (() => {
+    const up = l.unitPrep || {};
+    const doneCount = DIPLOMA_PDP_UNITS.filter(u => up[u.key]).length;
+    return `<div class="table-card" style="margin-bottom:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Unit Preparation Tab</div>
+        <div style="font-size:12px;color:var(--ink3);">Completed <strong style="color:var(--ink)">${doneCount}/${DIPLOMA_PDP_UNITS.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Unit</th><th style="text-align:center;width:90px">Prepared</th></tr></thead>
+        <tbody>${DIPLOMA_PDP_UNITS.map(u => `<tr>
+          <td style="font-size:12.5px">${u.label}</td>
+          <td style="text-align:center"><span class="pdp-dot ${up[u.key]?'pdp-done':'pdp-open'}">${up[u.key]?'✓':''}</span></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  })();
+
   const history = getMarkingHistory(l);
   const missed = history.filter(h => h.type === 'missed');
   const historyHtml = history.length ? `
@@ -505,6 +576,8 @@ function renderDashboard() {
     </div>
     ${ptHtml}
     ${pdpDashHtml}
+    ${mwtDashHtml}
+    ${unitPrepDashHtml}
     ${historyHtml}
     ${bottomHtml}`;
   learnerBar('dash-btns', cDash, 'selectDash');
@@ -573,6 +646,55 @@ function renderMarking() {
     </div>`;
   })();
 
+  const mwtHtml = l.type === 'ohe' ? '' : (() => {
+    const mwt = l.mwt || {};
+    const doneCount = MWT_ITEMS.filter(it => mwtIsComplete(mwt[it.key])).length;
+    const rows = MWT_ITEMS.map(it => {
+      const m = mwt[it.key] || {};
+      const addl = m.addl || {};
+      const addlRow = it.hasAdditional ? `
+      <tr class="mwt-addl-row">
+        <td style="padding-left:24px;font-size:11.5px;color:var(--ink3)">↳ Additional Questions</td>
+        <td style="text-align:center"><label class="pdp-check ${addl.na?'checked':''}"><input type="checkbox" ${addl.na?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','na')"><span>${addl.na?'✓':'○'} N/A</span></label></td>
+        <td style="text-align:center" colspan="2"><label class="pdp-check ${addl.learnerQ?'checked':''}"><input type="checkbox" ${addl.learnerQ?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','learnerQ')"><span>${addl.learnerQ?'✓':'○'} Learner Questions Completed</span></label> <label class="pdp-check ${addl.assessment?'checked':''}"><input type="checkbox" ${addl.assessment?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','assessment')"><span>${addl.assessment?'✓':'○'} Assessment Completed</span></label></td>
+      </tr>` : '';
+      return `<tr>
+        <td style="font-size:12.5px">${it.key}– ${it.label}</td>
+        <td style="text-align:center"><label class="pdp-check ${m.witnessed?'checked':''}"><input type="checkbox" ${m.witnessed?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','witnessed')"><span>${m.witnessed?'✓ Done':'○'}</span></label></td>
+        <td style="text-align:center"><label class="pdp-check ${m.reflection?'checked':''}"><input type="checkbox" ${m.reflection?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','reflection')"><span>${m.reflection?'✓ Done':'○'}</span></label></td>
+        <td style="text-align:center"><label class="pdp-check ${m.assessor?'checked':''}"><input type="checkbox" ${m.assessor?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','assessor')"><span>${m.assessor?'✓ Done':'○'}</span></label></td>
+      </tr>${addlRow}`;
+    }).join('');
+    return `<div class="table-card" style="margin-top:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mock Witness Testimonies (MWTs)</div>
+        <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:150px">Witnessed &amp; Completed<br><span style="font-weight:400;font-size:10.5px;color:var(--ink3)">by External Witness</span></th><th style="text-align:center;width:150px">Learner Reflection Completed</th><th style="text-align:center;width:150px">Assessor Comments Completed</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  })();
+
+  const unitPrepHtml = l.type === 'ohe' ? '' : (() => {
+    const up = l.unitPrep || {};
+    const doneCount = DIPLOMA_PDP_UNITS.filter(u => up[u.key]).length;
+    return `<div class="table-card" style="margin-top:16px;">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Unit Preparation Tab</div>
+        <div style="font-size:12px;color:var(--ink3);">Completed <strong style="color:var(--ink)">${doneCount}/${DIPLOMA_PDP_UNITS.length}</strong></div>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Unit</th><th style="text-align:center;width:110px">Prepared</th></tr></thead>
+        <tbody>${DIPLOMA_PDP_UNITS.map(u => `<tr>
+          <td style="font-size:12.5px">${u.label}</td>
+          <td style="text-align:center"><label class="pdp-check ${up[u.key]?'checked':''}"><input type="checkbox" ${up[u.key]?'checked':''} onchange="toggleUnitPrep(${cMark},'${u.key}')"><span>${up[u.key]?'✓ Done':'○'}</span></label></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  })();
+
   el.innerHTML = `<div class="page-header"><div class="page-title">Weekly Marking</div></div><div class="learner-bar" id="mark-btns"></div>
     <div class="table-card" style="padding:20px;margin-bottom:16px; border-left:5px solid ${isDone?'var(--teal)':'var(--amber)'}">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -582,6 +704,8 @@ function renderMarking() {
     </div>
     ${markingBodyHtml}
     ${pdpHtml}
+    ${mwtHtml}
+    ${unitPrepHtml}
     ${ptHtml}`;
   learnerBar('mark-btns', cMark, 'selectMark');
 }
@@ -595,6 +719,27 @@ function togglePDP(learnerIdx, key, field) {
 function togglePatientType(learnerIdx, key) {
   if (!DB.learners[learnerIdx].patientTypes) DB.learners[learnerIdx].patientTypes = {};
   DB.learners[learnerIdx].patientTypes[key] = !DB.learners[learnerIdx].patientTypes[key];
+  save().then(() => renderMarking());
+}
+function toggleMWT(learnerIdx, key, field) {
+  const l = DB.learners[learnerIdx];
+  if (!l.mwt) l.mwt = {};
+  if (!l.mwt[key]) l.mwt[key] = { witnessed: false, reflection: false, assessor: false };
+  l.mwt[key][field] = !l.mwt[key][field];
+  save().then(() => renderMarking());
+}
+function toggleMWTAddl(learnerIdx, key, field) {
+  const l = DB.learners[learnerIdx];
+  if (!l.mwt) l.mwt = {};
+  if (!l.mwt[key]) l.mwt[key] = { witnessed: false, reflection: false, assessor: false };
+  if (!l.mwt[key].addl) l.mwt[key].addl = { na: false, learnerQ: false, assessment: false };
+  l.mwt[key].addl[field] = !l.mwt[key].addl[field];
+  save().then(() => renderMarking());
+}
+function toggleUnitPrep(learnerIdx, key) {
+  const l = DB.learners[learnerIdx];
+  if (!l.unitPrep) l.unitPrep = {};
+  l.unitPrep[key] = !l.unitPrep[key];
   save().then(() => renderMarking());
 }
 
@@ -820,6 +965,8 @@ async function addLearner() {
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
   const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = 'not_started'; });
+  const mwt = {}; MWT_ITEMS.forEach(it => { mwt[it.key] = { witnessed: false, reflection: false, assessor: false, ...(it.hasAdditional ? { addl: { na: false, learnerQ: false, assessment: false } } : {}) }; });
+  const unitPrep = {}; DIPLOMA_PDP_UNITS.forEach(u => { unitPrep[u.key] = false; });
   const newLearner = {
     name, cohort, type, lastMarked: 0, completed: false, paid: false,
     acs: [...masterACS], progress: new Array(masterACS.length).fill('Not started'),
@@ -828,7 +975,7 @@ async function addLearner() {
       patientTypes: { adolescent:false, adult:false, elderly:false, pregnant:false, preSchool:false, primarySchool:false, specialNeeds:false },
       pcas: ohePcas,
       sos: oheSos
-    } : {})
+    } : { mwt, unitPrep })
   };
   DB.learners.push(newLearner);
   await save();
