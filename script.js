@@ -87,7 +87,7 @@ const OHE_PHASE_REQS = {
   'Case Study':                        { soKey: 'caseStudy' },
 };
 
-// Mock Witness Testimonies (Diploma only). Each item is signed off across three
+// Mandatory Witness Testimonies (Diploma only). Each item is signed off across three
 // stages; three items also carry an additional-questions sub-check.
 const MWT_ITEMS = [
   { key: '2.1a', label: 'Professionalism' },
@@ -366,7 +366,14 @@ function initialFirebaseLoad() {
           if (!l.mwt) l.mwt = {};
           MWT_ITEMS.forEach(it => {
             if (!l.mwt[it.key]) l.mwt[it.key] = { witnessed: false, reflection: false, assessor: false };
-            if (it.hasAdditional && !l.mwt[it.key].addl) l.mwt[it.key].addl = { na: false, learnerQ: false, assessment: false };
+            if (it.hasAdditional) {
+              if (l.mwt[it.key].additionalQuestions === undefined) {
+                // Migrate from the old 3-checkbox shape, if present.
+                const old = l.mwt[it.key].addl;
+                l.mwt[it.key].additionalQuestions = old ? !!(old.na || old.assessment) : false;
+              }
+              delete l.mwt[it.key].addl;
+            }
           });
           if (!l.unitPrep) l.unitPrep = {};
         }
@@ -474,7 +481,7 @@ function renderDashboard() {
     const doneCount = MWT_ITEMS.filter(it => mwtIsComplete(mwt[it.key])).length;
     return `<div class="table-card" style="margin-bottom:16px;">
       <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mock Witness Testimonies (MWTs)</div>
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mandatory Witness Testimonies (MWTs)</div>
         <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
       </div>
       <table class="tbl">
@@ -651,12 +658,10 @@ function renderMarking() {
     const doneCount = MWT_ITEMS.filter(it => mwtIsComplete(mwt[it.key])).length;
     const rows = MWT_ITEMS.map(it => {
       const m = mwt[it.key] || {};
-      const addl = m.addl || {};
       const addlRow = it.hasAdditional ? `
       <tr class="mwt-addl-row">
         <td style="padding-left:24px;font-size:11.5px;color:var(--ink3)">↳ Additional Questions</td>
-        <td style="text-align:center"><label class="pdp-check ${addl.na?'checked':''}"><input type="checkbox" ${addl.na?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','na')"><span>${addl.na?'✓':'○'} N/A</span></label></td>
-        <td style="text-align:center" colspan="2"><label class="pdp-check ${addl.learnerQ?'checked':''}"><input type="checkbox" ${addl.learnerQ?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','learnerQ')"><span>${addl.learnerQ?'✓':'○'} Learner Questions Completed</span></label> <label class="pdp-check ${addl.assessment?'checked':''}"><input type="checkbox" ${addl.assessment?'checked':''} onchange="toggleMWTAddl(${cMark},'${it.key}','assessment')"><span>${addl.assessment?'✓':'○'} Assessment Completed</span></label></td>
+        <td style="text-align:center" colspan="3"><label class="pdp-check ${m.additionalQuestions?'checked':''}"><input type="checkbox" ${m.additionalQuestions?'checked':''} onchange="toggleMWTAdditional(${cMark},'${it.key}')"><span>${m.additionalQuestions?'✓ Done':'○'}</span></label></td>
       </tr>` : '';
       return `<tr>
         <td style="font-size:12.5px">${it.key}– ${it.label}</td>
@@ -667,7 +672,7 @@ function renderMarking() {
     }).join('');
     return `<div class="table-card" style="margin-top:16px;">
       <div style="padding:16px 20px 12px;border-bottom:1px solid var(--cream2);display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mock Witness Testimonies (MWTs)</div>
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;">Mandatory Witness Testimonies (MWTs)</div>
         <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
       </div>
       <table class="tbl">
@@ -728,12 +733,11 @@ function toggleMWT(learnerIdx, key, field) {
   l.mwt[key][field] = !l.mwt[key][field];
   save().then(() => renderMarking());
 }
-function toggleMWTAddl(learnerIdx, key, field) {
+function toggleMWTAdditional(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.mwt) l.mwt = {};
   if (!l.mwt[key]) l.mwt[key] = { witnessed: false, reflection: false, assessor: false };
-  if (!l.mwt[key].addl) l.mwt[key].addl = { na: false, learnerQ: false, assessment: false };
-  l.mwt[key].addl[field] = !l.mwt[key].addl[field];
+  l.mwt[key].additionalQuestions = !l.mwt[key].additionalQuestions;
   save().then(() => renderMarking());
 }
 function toggleUnitPrep(learnerIdx, key) {
@@ -965,7 +969,7 @@ async function addLearner() {
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
   const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = 'not_started'; });
-  const mwt = {}; MWT_ITEMS.forEach(it => { mwt[it.key] = { witnessed: false, reflection: false, assessor: false, ...(it.hasAdditional ? { addl: { na: false, learnerQ: false, assessment: false } } : {}) }; });
+  const mwt = {}; MWT_ITEMS.forEach(it => { mwt[it.key] = { witnessed: false, reflection: false, assessor: false, ...(it.hasAdditional ? { additionalQuestions: false } : {}) }; });
   const unitPrep = {}; DIPLOMA_PDP_UNITS.forEach(u => { unitPrep[u.key] = false; });
   const newLearner = {
     name, cohort, type, lastMarked: 0, completed: false, paid: false,
