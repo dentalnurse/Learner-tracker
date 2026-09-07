@@ -1301,6 +1301,88 @@ function exportPDF(idx) {
     });
   }
 
+  // ── PDP & Reflections, Unit Preparation, MWTs (Diploma only)
+  if (l.type !== 'ohe') {
+    const pdp = l.pdp || {};
+    y = doc.lastAutoTable.finalY + 10;
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('End of Unit PDP & Reflections', 20, y); y += 4;
+    doc.autoTable({
+      startY: y,
+      head: [['Unit', 'PDP', 'Reflection']],
+      body: DIPLOMA_PDP_UNITS.map(u => {
+        const e = pdp[u.key] || {};
+        return [u.label, e.pdp ? '✓' : '○', e.reflection ? '✓' : '○'];
+      }),
+      styles: { fontSize: 9, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 1: { cellWidth: 30, halign: 'center' }, 2: { cellWidth: 30, halign: 'center' } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if ((d.column.index === 1 || d.column.index === 2) && d.section === 'body') {
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
+        }
+      },
+      margin: { left: 20, right: 20 }
+    });
+
+    const up = l.unitPrep || {};
+    y = doc.lastAutoTable.finalY + 10;
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('Unit Preparation Tab', 20, y); y += 4;
+    doc.autoTable({
+      startY: y,
+      head: [['Unit', 'Prepared']],
+      body: DIPLOMA_PDP_UNITS.map(u => [u.label, up[u.key] ? '✓' : '○']),
+      styles: { fontSize: 9, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 1: { cellWidth: 30, halign: 'center' } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if (d.column.index === 1 && d.section === 'body') {
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
+        }
+      },
+      margin: { left: 20, right: 20 }
+    });
+
+    const mwt = l.mwt || {};
+    y = doc.lastAutoTable.finalY + 10;
+    if (y > 220) { doc.addPage(); y = 20; }
+    const mwtDone = MWT_ITEMS.filter(it => mwtIsComplete(mwt[it.key])).length;
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...INK);
+    doc.text('Mandatory Witness Testimonies (MWTs)', 20, y); y += 5;
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...INK3);
+    doc.text(`Signed off ${mwtDone}/${MWT_ITEMS.length}`, 20, y); y += 3;
+    doc.autoTable({
+      startY: y,
+      head: [['Clinical activity', 'Witnessed', 'Reflection', 'Assessor']],
+      body: MWT_ITEMS.map(it => {
+        const e = mwt[it.key] || {};
+        return [`${it.ref} – ${it.label}`, e.witnessed ? '✓' : '○', e.reflection ? '✓' : '○', e.assessor ? '✓' : '○'];
+      }),
+      styles: { fontSize: 8.5, cellPadding: 3, textColor: INK },
+      headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
+      columnStyles: { 1: { cellWidth: 24, halign: 'center' }, 2: { cellWidth: 24, halign: 'center' }, 3: { cellWidth: 24, halign: 'center' } },
+      alternateRowStyles: { fillColor: [250, 249, 247] },
+      didParseCell: d => {
+        if ((d.column.index === 1 || d.column.index === 2 || d.column.index === 3) && d.section === 'body') {
+          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 11;
+        }
+      },
+      margin: { left: 20, right: 20 }
+    });
+  }
+
   // ── OHE Patient Types
   if (l.type === 'ohe') {
     const pts = l.patientTypes || {};
