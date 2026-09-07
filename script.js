@@ -1364,17 +1364,14 @@ function exportPDF(idx) {
     doc.text(`Signed off ${mwtDone}/${MWT_ITEMS.length}`, 20, y); y += 3;
     doc.autoTable({
       startY: y,
-      head: [['Clinical activity', 'Witnessed', 'Reflection', 'Assessor']],
-      body: MWT_ITEMS.map(it => {
-        const e = mwt[it.key] || {};
-        return [`${it.ref} – ${it.label}`, e.witnessed ? '+' : '-', e.reflection ? '+' : '-', e.assessor ? '+' : '-'];
-      }),
+      head: [['Clinical activity', 'Completed']],
+      body: MWT_ITEMS.map(it => [`${it.ref} – ${it.label}`, mwtIsComplete(mwt[it.key]) ? '+' : '-']),
       styles: { fontSize: 8.5, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
-      columnStyles: { 1: { cellWidth: 24, halign: 'center' }, 2: { cellWidth: 24, halign: 'center' }, 3: { cellWidth: 24, halign: 'center' } },
+      columnStyles: { 1: { cellWidth: 24, halign: 'center' } },
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
-        if ((d.column.index === 1 || d.column.index === 2 || d.column.index === 3) && d.section === 'body') {
+        if (d.column.index === 1 && d.section === 'body') {
           d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 11;
         }
