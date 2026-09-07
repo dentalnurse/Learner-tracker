@@ -1314,7 +1314,7 @@ function exportPDF(idx) {
       head: [['Unit', 'PDP', 'Reflection']],
       body: DIPLOMA_PDP_UNITS.map(u => {
         const e = pdp[u.key] || {};
-        return [u.label, e.pdp ? '✓' : '○', e.reflection ? '✓' : '○'];
+        return [u.label, e.pdp ? '+' : '-', e.reflection ? '+' : '-'];
       }),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
@@ -1322,7 +1322,7 @@ function exportPDF(idx) {
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if ((d.column.index === 1 || d.column.index === 2) && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
         }
       },
@@ -1338,14 +1338,14 @@ function exportPDF(idx) {
     doc.autoTable({
       startY: y,
       head: [['Unit', 'Prepared']],
-      body: DIPLOMA_PDP_UNITS.map(u => [u.label, up[u.key] ? '✓' : '○']),
+      body: DIPLOMA_PDP_UNITS.map(u => [u.label, up[u.key] ? '+' : '-']),
       styles: { fontSize: 9, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
       columnStyles: { 1: { cellWidth: 30, halign: 'center' } },
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if (d.column.index === 1 && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12;
         }
       },
@@ -1367,7 +1367,7 @@ function exportPDF(idx) {
       head: [['Clinical activity', 'Witnessed', 'Reflection', 'Assessor']],
       body: MWT_ITEMS.map(it => {
         const e = mwt[it.key] || {};
-        return [`${it.ref} – ${it.label}`, e.witnessed ? '✓' : '○', e.reflection ? '✓' : '○', e.assessor ? '✓' : '○'];
+        return [`${it.ref} – ${it.label}`, e.witnessed ? '+' : '-', e.reflection ? '+' : '-', e.assessor ? '+' : '-'];
       }),
       styles: { fontSize: 8.5, cellPadding: 3, textColor: INK },
       headStyles: { fillColor: TEAL, textColor: [255,255,255], fontSize: 8, fontStyle: 'bold' },
@@ -1375,7 +1375,7 @@ function exportPDF(idx) {
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if ((d.column.index === 1 || d.column.index === 2 || d.column.index === 3) && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : [180,180,180];
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : [180,180,180];
           d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 11;
         }
       },
@@ -1395,13 +1395,13 @@ function exportPDF(idx) {
     doc.text('OHE Patient Types', 20, y); y += 5;
     doc.setFontSize(9); doc.setFont('helvetica', 'normal');
     doc.setTextColor(...INK3);
-    doc.text(`${ptCount}/7 patient types represented — minimum 5 required${ptCount >= 5 ? '  ✓' : ''}`, 20, y); y += 3;
+    doc.text(`${ptCount}/7 patient types represented — minimum 5 required${ptCount >= 5 ? '  +' : ''}`, 20, y); y += 3;
 
     doc.autoTable({
       startY: y,
       head: [['', 'Patient Type', 'Status']],
       body: OHE_PATIENT_TYPES.map(pt => [
-        pts[pt.key] ? '✓' : '○',
+        pts[pt.key] ? '+' : '-',
         pt.label,
         pts[pt.key] ? 'At least one example identified' : 'Not yet recorded'
       ]),
@@ -1411,7 +1411,7 @@ function exportPDF(idx) {
       alternateRowStyles: { fillColor: [250, 249, 247] },
       didParseCell: d => {
         if (d.column.index === 0 && d.section === 'body') {
-          d.cell.styles.textColor = d.cell.raw === '✓' ? TEAL : RED;
+          d.cell.styles.textColor = d.cell.raw === '+' ? TEAL : RED;
           d.cell.styles.fontStyle = 'bold';
           d.cell.styles.fontSize = 12;
         }
