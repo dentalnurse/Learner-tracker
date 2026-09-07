@@ -110,7 +110,7 @@ const MWT_ITEMS = [
   { key: '2_1o', ref: '2.1o', label: 'Non Surgical Extraction' },
   { key: '2_1p', ref: '2.1p', label: 'Oral Health Instruction (Simulated Activity)' },
 ];
-function mwtIsComplete(entry) { return !!(entry && entry.witnessed && entry.reflection && entry.assessor); }
+function mwtIsComplete(entry) { return !!(entry && entry.completed); }
 
 function parseDate(str) {
   if (!str || !str.trim()) return null;
@@ -374,7 +374,14 @@ function initialFirebaseLoad() {
         if (l.type !== 'ohe') {
           if (!l.mwt) l.mwt = {};
           MWT_ITEMS.forEach(it => {
-            if (!l.mwt[it.key]) l.mwt[it.key] = { witnessed: false, reflection: false, assessor: false };
+            if (!l.mwt[it.key]) l.mwt[it.key] = { completed: false };
+            if (l.mwt[it.key].completed === undefined) {
+              // Migrate from the old 3-stage shape — assessor sign-off was the real completion signal.
+              l.mwt[it.key].completed = !!l.mwt[it.key].assessor;
+            }
+            delete l.mwt[it.key].witnessed;
+            delete l.mwt[it.key].reflection;
+            delete l.mwt[it.key].assessor;
             if (it.hasAdditional) {
               if (l.mwt[it.key].additionalQuestions === undefined) {
                 // Migrate from the old 3-checkbox shape, if present.
@@ -494,14 +501,12 @@ function renderDashboard() {
         <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
       </div>
       <table class="tbl">
-        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:90px">Witnessed</th><th style="text-align:center;width:90px">Reflection</th><th style="text-align:center;width:90px">Assessor</th></tr></thead>
+        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:110px">Completed</th></tr></thead>
         <tbody>${MWT_ITEMS.map(it => {
           const e = mwt[it.key] || {};
           return `<tr>
             <td style="font-size:12.5px">${it.ref}– ${it.label}</td>
-            <td style="text-align:center"><span class="pdp-dot ${e.witnessed?'pdp-done':'pdp-open'}">${e.witnessed?'✓':''}</span></td>
-            <td style="text-align:center"><span class="pdp-dot ${e.reflection?'pdp-done':'pdp-open'}">${e.reflection?'✓':''}</span></td>
-            <td style="text-align:center"><span class="pdp-dot ${e.assessor?'pdp-done':'pdp-open'}">${e.assessor?'✓':''}</span></td>
+            <td style="text-align:center"><span class="pdp-dot ${e.completed?'pdp-done':'pdp-open'}">${e.completed?'✓':''}</span></td>
           </tr>`;
         }).join('')}</tbody>
       </table>
@@ -670,13 +675,11 @@ function renderMarking() {
       const addlRow = it.hasAdditional ? `
       <tr class="mwt-addl-row">
         <td style="padding-left:24px;font-size:11.5px;color:var(--ink3)">↳ Additional Questions</td>
-        <td style="text-align:center" colspan="3"><label class="pdp-check ${m.additionalQuestions?'checked':''}"><input type="checkbox" ${m.additionalQuestions?'checked':''} onchange="toggleMWTAdditional(${cMark},'${it.key}')"><span>${m.additionalQuestions?'✓ Done':'○'}</span></label></td>
+        <td style="text-align:center"><label class="pdp-check ${m.additionalQuestions?'checked':''}"><input type="checkbox" ${m.additionalQuestions?'checked':''} onchange="toggleMWTAdditional(${cMark},'${it.key}')"><span>${m.additionalQuestions?'✓ Done':'○'}</span></label></td>
       </tr>` : '';
       return `<tr>
         <td style="font-size:12.5px">${it.ref}– ${it.label}</td>
-        <td style="text-align:center"><label class="pdp-check ${m.witnessed?'checked':''}"><input type="checkbox" ${m.witnessed?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','witnessed')"><span>${m.witnessed?'✓ Done':'○'}</span></label></td>
-        <td style="text-align:center"><label class="pdp-check ${m.reflection?'checked':''}"><input type="checkbox" ${m.reflection?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','reflection')"><span>${m.reflection?'✓ Done':'○'}</span></label></td>
-        <td style="text-align:center"><label class="pdp-check ${m.assessor?'checked':''}"><input type="checkbox" ${m.assessor?'checked':''} onchange="toggleMWT(${cMark},'${it.key}','assessor')"><span>${m.assessor?'✓ Done':'○'}</span></label></td>
+        <td style="text-align:center"><label class="pdp-check ${m.completed?'checked':''}"><input type="checkbox" ${m.completed?'checked':''} onchange="toggleMWT(${cMark},'${it.key}')"><span>${m.completed?'✓ Done':'○'}</span></label></td>
       </tr>${addlRow}`;
     }).join('');
     return `<div class="table-card" style="margin-top:16px;">
@@ -685,7 +688,7 @@ function renderMarking() {
         <div style="font-size:12px;color:var(--ink3);">Signed off <strong style="color:var(--ink)">${doneCount}/${MWT_ITEMS.length}</strong></div>
       </div>
       <table class="tbl">
-        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:150px">Witnessed &amp; Completed<br><span style="font-weight:400;font-size:10.5px;color:var(--ink3)">by External Witness</span></th><th style="text-align:center;width:150px">Learner Reflection Completed</th><th style="text-align:center;width:150px">Assessor Comments Completed</th></tr></thead>
+        <thead><tr><th>Clinical activity</th><th style="text-align:center;width:150px">Completed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -735,17 +738,17 @@ function togglePatientType(learnerIdx, key) {
   DB.learners[learnerIdx].patientTypes[key] = !DB.learners[learnerIdx].patientTypes[key];
   save().then(() => renderMarking());
 }
-function toggleMWT(learnerIdx, key, field) {
+function toggleMWT(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.mwt) l.mwt = {};
-  if (!l.mwt[key]) l.mwt[key] = { witnessed: false, reflection: false, assessor: false };
-  l.mwt[key][field] = !l.mwt[key][field];
+  if (!l.mwt[key]) l.mwt[key] = { completed: false };
+  l.mwt[key].completed = !l.mwt[key].completed;
   save().then(() => renderMarking());
 }
 function toggleMWTAdditional(learnerIdx, key) {
   const l = DB.learners[learnerIdx];
   if (!l.mwt) l.mwt = {};
-  if (!l.mwt[key]) l.mwt[key] = { witnessed: false, reflection: false, assessor: false };
+  if (!l.mwt[key]) l.mwt[key] = { completed: false };
   l.mwt[key].additionalQuestions = !l.mwt[key].additionalQuestions;
   save().then(() => renderMarking());
 }
@@ -978,7 +981,7 @@ async function addLearner() {
   const masterACS = type === 'ohe' ? [] : DIPLOMA_ACS;
   const ohePcas = {}; OHE_PCAS.forEach(p => { ohePcas[p.key] = 'not_started'; });
   const oheSos  = {}; OHE_SOS.forEach(s => { oheSos[s.key] = 'not_started'; });
-  const mwt = {}; MWT_ITEMS.forEach(it => { mwt[it.key] = { witnessed: false, reflection: false, assessor: false, ...(it.hasAdditional ? { additionalQuestions: false } : {}) }; });
+  const mwt = {}; MWT_ITEMS.forEach(it => { mwt[it.key] = { completed: false, ...(it.hasAdditional ? { additionalQuestions: false } : {}) }; });
   const unitPrep = {}; DIPLOMA_PDP_UNITS.forEach(u => { unitPrep[u.key] = false; });
   const newLearner = {
     name, cohort, type, lastMarked: 0, completed: false, paid: false,
