@@ -406,9 +406,11 @@ function initialFirebaseLoad() {
 function isMarkedThisWeek(ts) { return ts > new Date(getWeekStart()).getTime(); }
 function ubdgClass(u){ return ['SO','CS','PCA'].includes(String(u).toUpperCase()) ? `ubdg ubdg-${u.toLowerCase()}` : 'ubdg ubdg-d'; }
 function ubdgLabel(u){ return ['SO','CS','PCA'].includes(String(u).toUpperCase()) ? u : `Unit ${u}`; }
+function statusClass(s) {
+  return s === 'Completed' ? 's-done' : (s === 'Requires amendments' ? 's-amend' : 's-none');
+}
 function badge(s) {
-  const cls = s === 'Completed' ? 's-done' : (s === 'Requires amendments' ? 's-amend' : 's-none');
-  return `<span class="sbdg ${cls}">${s}</span>`;
+  return `<span class="sbdg ${statusClass(s)}">${s}</span>`;
 }
 function initials(n){ return n ? n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) : '??'; }
 
@@ -618,7 +620,7 @@ function renderMarking() {
   if (l.type === 'ohe') {
     markingBodyHtml = oheSectionsHtml(l, cMark, true);
   } else {
-    const rows = l.acs.map((ac, i) => `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td>${ac.ref}</td><td><select class="tt-edit-input" style="width:100%" onchange="updateMarking(${i}, this.value)">${STATUSES.map(s=>`<option ${s===(l.progress[i]||'Not started')?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('');
+    const rows = l.acs.map((ac, i) => { const st = l.progress[i] || 'Not started'; return `<tr><td><span class="${ubdgClass(ac.unit)}">${ubdgLabel(ac.unit)}</span></td><td>${ac.ref}</td><td><select class="tt-edit-input ${statusClass(st)}" style="width:100%" onchange="this.className='tt-edit-input ' + statusClass(this.value); updateMarking(${i}, this.value)">${STATUSES.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}</select></td></tr>`; }).join('');
     markingBodyHtml = `<table class="tbl"><tbody>${rows}</tbody></table>`;
   }
 

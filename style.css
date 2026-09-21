@@ -339,12 +339,15 @@ select:focus{outline:none;border-color:var(--teal)}
 .file-upload-zone.loaded{border-color:var(--teal);border-style:solid;color:var(--teal2);background:var(--teal-l)}
 .file-upload-zone input[type=file]{display:none}
 .tt-edit-input{
-  font-family:'DM Sans',sans-serif;font-size:12.5px;
+  font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:500;
   padding:5px 9px;border:1.5px solid var(--border);border-radius:7px;
   background:#fff;color:var(--ink);width:140px;
-  transition:border-color .15s;
+  transition:border-color .15s,background .15s,color .15s;
 }
 .tt-edit-input:focus{outline:none;border-color:var(--teal)}
+.tt-edit-input.s-none{background:var(--cream2);color:var(--ink3);border-color:var(--cream2)}
+.tt-edit-input.s-amend{background:var(--amber-l);color:var(--amber);border-color:var(--amber-l)}
+.tt-edit-input.s-done{background:var(--teal-l);color:var(--teal2);border-color:var(--teal-l)}
 .warn-banner{
   background:var(--amber-l);
   border:1px solid #fde68a;
